@@ -1,0 +1,1484 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดการและติดตามงาน (Work Tracking System)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js สำหรับแสดงกราฟ Dashboard -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- CryptoJS สำหรับเข้ารหัสข้อมูล PDPA (AES Encryption) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <!-- Firebase Cloud Storage SDKs for Real-time Sync across devices -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        window.FirebaseSDK = {
+            initializeApp, getAuth, signInAnonymously, signInWithCustomToken,
+            getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, addDoc
+        };
+    </script>
+    <!-- Google Font Prompt -->
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Prompt', sans-serif;
+            background-color: #f8fafc;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col pb-16 md:pb-0">
+
+    <!-- ==================== SECTION: OTP AUTHENTICATION OVERLAY ==================== -->
+    <div id="authOverlay" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 sm:p-8 space-y-6 relative overflow-hidden border border-slate-100">
+            <div class="text-center space-y-2">
+                <div class="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto text-2xl shadow-inner">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <h2 class="text-xl font-bold text-slate-800">ยืนยันตัวตนเข้าใช้งาน</h2>
+                <p class="text-xs text-slate-500">กรุณาระบุอีเมลของคุณเพื่อรับรหัส OTP สำหรับเข้าสู่ระบบอย่างปลอดภัย</p>
+            </div>
+
+            <!-- STEP 1: Enter Email -->
+            <form id="emailForm" onsubmit="handleSendOTP(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">อีเมลผู้ใช้งาน (Email Address)</label>
+                    <div class="relative">
+                        <i class="fa-regular fa-envelope absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                        <input type="email" id="authEmail" required placeholder="example@company.com" class="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                </div>
+                <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition shadow-lg shadow-indigo-200 flex items-center justify-center gap-2">
+                    <span>ส่งรหัส OTP</span>
+                    <i class="fa-solid fa-paper-plane text-xs"></i>
+                </button>
+            </form>
+
+            <!-- STEP 2: Enter OTP Code (Hidden initially) -->
+            <form id="otpForm" onsubmit="handleVerifyOTP(event)" class="space-y-4 hidden">
+                <div class="bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 text-center">
+                    <p class="text-xs text-indigo-700">ส่งรหัส OTP ไปยังอีเมล: <strong id="sentEmailDisplay" class="font-bold">-</strong></p>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1 text-center">กรอกรหัส OTP 6 หลัก</label>
+                    <input type="text" id="otpCode" maxlength="6" required placeholder="000000" class="w-full tracking-[0.5em] text-center font-mono text-xl py-2.5 border border-slate-200 rounded-xl text-slate-800 font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </div>
+                <div class="flex justify-between items-center text-xs text-slate-500 px-1">
+                    <span id="otpTimerText">รหัสหมดอายุใน: <strong id="otpTimer">03:00</strong></span>
+                    <button type="button" onclick="resendOTP()" class="text-indigo-600 hover:underline font-semibold">ส่งรหัสอีกครั้ง</button>
+                </div>
+                <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition shadow-lg shadow-emerald-200 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-lock-open"></i>
+                    <span>ยืนยันเข้าสู่ระบบ</span>
+                </button>
+                <button type="button" onclick="resetAuthStep()" class="w-full text-center text-xs text-slate-400 hover:text-slate-600">เปลี่ยนอีเมลผู้ใช้งาน</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Header Navigation Bar -->
+    <header class="bg-indigo-700 text-white shadow-lg sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-white text-indigo-700 p-2 rounded-lg font-bold text-xl shadow">
+                    <i class="fa-solid fa-list-check"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight">Work Tracker</h1>
+                    <p class="text-xs text-indigo-200 hidden sm:block">ระบบติดตามและจัดการงานประจำวัน</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-2">
+                <span id="userBadge" class="hidden md:inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-800/60 rounded-lg text-xs text-indigo-100 border border-indigo-500">
+                    <i class="fa-solid fa-user-circle"></i>
+                    <span id="currentUserEmail">-</span>
+                </span>
+                <button onclick="openSecurityInfoModal()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-medium transition flex items-center gap-1.5 border border-indigo-400">
+                    <i class="fa-solid fa-shield-halved text-green-300"></i>
+                    <span class="hidden sm:inline">PDPA</span>
+                </button>
+                <button onclick="openModal('taskModal')" class="px-3 sm:px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs sm:text-sm font-semibold transition shadow-md flex items-center gap-1.5">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>สร้างงาน</span>
+                </button>
+                <button onclick="logout()" class="p-2 text-indigo-200 hover:text-white" title="ออกจากระบบ">
+                    <i class="fa-solid fa-right-from-bracket text-sm"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full">
+        <!-- Navigation Tabs -->
+        <div class="mb-6 flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div class="bg-white p-1.5 rounded-xl shadow-sm border border-slate-100 flex gap-2 w-full sm:w-auto">
+                <button onclick="switchTab('dashboard')" id="tabDashboardBtn" class="flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold transition flex items-center justify-center gap-2 bg-indigo-50 text-indigo-700 shadow-sm">
+                    <i class="fa-solid fa-chart-pie"></i>
+                    <span>ภาพรวม (Dashboard)</span>
+                </button>
+                <button onclick="switchTab('tasks')" id="tabTasksBtn" class="flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2 text-slate-600 hover:text-indigo-600">
+                    <i class="fa-solid fa-list-check"></i>
+                    <span>รายการงานทั้งหมด</span>
+                </button>
+            </div>
+
+            <!-- Export Excel Button -->
+            <button onclick="exportToExcel()" class="w-full sm:w-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition shadow-sm flex items-center justify-center gap-2">
+                <i class="fa-solid fa-file-excel text-base"></i>
+                <span>ส่งออก Excel (CSV)</span>
+            </button>
+        </div>
+
+        <!-- SECTION 1: DASHBOARD VIEW -->
+        <div id="dashboardSection" class="space-y-6">
+            <!-- Stat Cards Grid -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-slate-500 mb-2">
+                        <span class="text-xs font-semibold">งานทั้งหมด</span>
+                        <i class="fa-solid fa-folder text-indigo-500 text-sm"></i>
+                    </div>
+                    <div class="text-2xl font-bold text-slate-800" id="statTotal">0</div>
+                    <span class="text-[11px] text-slate-400 mt-1">โครงการทั้งหมดในระบบ</span>
+                </div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-amber-600 mb-2">
+                        <span class="text-xs font-semibold">รอดำเนินการ</span>
+                        <i class="fa-solid fa-clock text-amber-500 text-sm"></i>
+                    </div>
+                    <div class="text-2xl font-bold text-amber-600" id="statPending">0</div>
+                    <span class="text-[11px] text-slate-400 mt-1">งานที่ยังไม่ได้เริ่มทำ</span>
+                </div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-blue-600 mb-2">
+                        <span class="text-xs font-semibold">กำลังดำเนินการ</span>
+                        <i class="fa-solid fa-spinner text-blue-500 text-sm"></i>
+                    </div>
+                    <div class="text-2xl font-bold text-blue-600" id="statInProgress">0</div>
+                    <span class="text-[11px] text-slate-400 mt-1">งานที่อยู่ระหว่างทำ</span>
+                </div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-emerald-600 mb-2">
+                        <span class="text-xs font-semibold">เสร็จสิ้น</span>
+                        <i class="fa-solid fa-circle-check text-emerald-500 text-sm"></i>
+                    </div>
+                    <div class="text-2xl font-bold text-emerald-600" id="statCompleted">0</div>
+                    <span class="text-[11px] text-slate-400 mt-1">งานที่เสร็จสมบูรณ์</span>
+                </div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-rose-600 mb-2">
+                        <span class="text-xs font-semibold">ยกเลิก</span>
+                        <i class="fa-solid fa-ban text-rose-500 text-sm"></i>
+                    </div>
+                    <div class="text-2xl font-bold text-rose-600" id="statCancelled">0</div>
+                    <span class="text-[11px] text-slate-400 mt-1">งานที่ไม่ดำเนินการ</span>
+                </div>
+            </div>
+
+            <!-- Charts Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Status Doughnut Chart -->
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
+                    <h3 class="text-sm font-semibold text-slate-700 w-full mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-chart-donut text-indigo-500"></i> สัดส่วนสถานะงาน
+                    </h3>
+                    <div class="w-full max-w-[240px] h-[240px]">
+                        <canvas id="statusChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Priority Bar Chart -->
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 lg:col-span-2 flex flex-col">
+                    <h3 class="text-sm font-semibold text-slate-700 w-full mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-layer-group text-indigo-500"></i> จำนวนงานแบ่งตามระดับความสำคัญ
+                    </h3>
+                    <div class="w-full flex-1 min-h-[220px]">
+                        <canvas id="priorityChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Tasks List in Dashboard -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-fire text-amber-500"></i> งานด่วน / ล่าสุดที่ต้องติดตาม
+                    </h3>
+                    <button onclick="switchTab('tasks')" class="text-indigo-600 hover:text-indigo-800 text-xs font-semibold">ดูทั้งหมด →</button>
+                </div>
+                <div id="recentTasksList" class="space-y-3">
+                    <!-- Dynamic Items loaded by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 2: TASK MANAGEMENT VIEW -->
+        <div id="tasksSection" class="hidden space-y-6">
+            <!-- Filter & Search Bar -->
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-4 justify-between items-center">
+                <div class="relative w-full md:w-80">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"></i>
+                    <input type="text" id="searchInput" oninput="renderTasks()" placeholder="ค้นหางาน หรือผู้รับผิดชอบ..." class="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                
+                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                    <!-- Filter Status -->
+                    <select id="filterStatus" onchange="renderTasks()" class="px-3 py-2 border border-slate-200 rounded-xl text-sm text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 flex-1 md:flex-none">
+                        <option value="ALL">สถานะทั้งหมด</option>
+                        <option value="PENDING">รอดำเนินการ</option>
+                        <option value="IN_PROGRESS">กำลังดำเนินการ</option>
+                        <option value="COMPLETED">เสร็จสิ้น</option>
+                        <option value="CANCELLED">ยกเลิก</option>
+                    </select>
+
+                    <!-- Filter Priority -->
+                    <select id="filterPriority" onchange="renderTasks()" class="px-3 py-2 border border-slate-200 rounded-xl text-sm text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 flex-1 md:flex-none">
+                        <option value="ALL">ความสำคัญทั้งหมด</option>
+                        <option value="HIGH">สูง (High)</option>
+                        <option value="MEDIUM">ปานกลาง (Medium)</option>
+                        <option value="LOW">ต่ำ (Low)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Main Tasks Cards Container -->
+            <div id="tasksContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <!-- Task Cards will be rendered here dynamically -->
+            </div>
+        </div>
+    </main>
+
+    <!-- MODAL 6: ประวัติการแก้ไขข้อมูล (Audit Log Modal) -->
+    <div id="auditLogModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden">
+            <div class="px-6 py-4 bg-slate-800 text-white flex justify-between items-center">
+                <h3 class="font-semibold text-lg flex items-center gap-2">
+                    <i class="fa-solid fa-clock-rotate-left text-indigo-400"></i> ประวัติการทำรายการ (Audit Log)
+                </h3>
+                <button onclick="closeModal('auditLogModal')" class="text-white/80 hover:text-white text-lg"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-6 space-y-4 overflow-y-auto custom-scrollbar flex-1" id="auditLogContainer">
+                <!-- Audit Log Items rendered here -->
+            </div>
+            <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+                <button onclick="closeModal('auditLogModal')" class="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold">ปิด</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Bottom Navigation Bar (สำหรับอุปกรณ์หน้าจอเล็ก) -->
+    <div class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-40 flex justify-around py-2 px-4 shadow-lg">
+        <button onclick="switchTab('dashboard')" id="mobileNavDash" class="flex flex-col items-center text-indigo-600 font-medium text-[11px]">
+            <i class="fa-solid fa-chart-pie text-lg mb-0.5"></i>
+            <span>Dashboard</span>
+        </button>
+        <button onclick="switchTab('tasks')" id="mobileNavTasks" class="flex flex-col items-center text-slate-400 font-medium text-[11px]">
+            <i class="fa-solid fa-tasks text-lg mb-0.5"></i>
+            <span>รายการงาน</span>
+        </button>
+        <button onclick="openModal('taskModal')" class="flex flex-col items-center text-emerald-600 font-medium text-[11px]">
+            <i class="fa-solid fa-plus-circle text-lg mb-0.5"></i>
+            <span>สร้างงานใหม่</span>
+        </button>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500 hidden md:block">
+        <p>© ระบบจัดการและติดตามงาน - ยืนยันตัวตนด้วย Email OTP & เข้ารหัส PDPA</p>
+    </footer>
+
+    <!-- MODAL 1: เพิ่ม / แก้ไขงานหลัก (Task Modal) -->
+    <div id="taskModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="px-6 py-4 bg-indigo-700 text-white flex justify-between items-center">
+                <h3 class="font-semibold text-lg flex items-center gap-2" id="taskModalTitle">
+                    <i class="fa-solid fa-square-plus"></i> เพิ่มงานหลักใหม่
+                </h3>
+                <button onclick="closeModal('taskModal')" class="text-white/80 hover:text-white text-lg"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <form id="taskForm" onsubmit="handleSaveTask(event)" class="p-6 space-y-4 overflow-y-auto custom-scrollbar">
+                <input type="hidden" id="taskId">
+                
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อโครงการ / งานหลัก <span class="text-rose-500">*</span></label>
+                    <input type="text" id="taskTitle" required placeholder="เช่น พัฒนาระบบรายงานประจำเดือน" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">รายละเอียดงาน</label>
+                    <textarea id="taskDescription" rows="3" placeholder="ระบุรายละเอียดเพิ่มเติม..." class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"></textarea>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อผู้รับผิดชอบ <span class="text-indigo-600 font-normal">(PDPA Encrypted)</span></label>
+                        <input type="text" id="taskAssignee" placeholder="เช่น นายสมชาย ใจดี" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">เบอร์ติดต่อ/อีเมล <span class="text-indigo-600 font-normal">(PDPA Encrypted)</span></label>
+                        <input type="text" id="taskContact" placeholder="เช่น 081-234-5678" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">กำหนดส่ง (Due Date)</label>
+                        <input type="date" id="taskDueDate" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">ความสำคัญ</label>
+                        <select id="taskPriority" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                            <option value="LOW">ต่ำ</option>
+                            <option value="MEDIUM" selected>ปานกลาง</option>
+                            <option value="HIGH">สูง</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">สถานะ</label>
+                        <select id="taskStatus" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                            <option value="PENDING">รอดำเนินการ</option>
+                            <option value="IN_PROGRESS">กำลังดำเนินการ</option>
+                            <option value="COMPLETED">เสร็จสิ้น</option>
+                            <option value="CANCELLED">ยกเลิก</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="pt-4 flex justify-end space-x-2 border-t border-slate-100">
+                    <button type="button" onclick="closeModal('taskModal')" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm font-medium transition">ยกเลิก</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition">บันทึกข้อมูล</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 2: จัดการกิจกรรมย่อย (Sub-tasks / Activities Modal) -->
+    <div id="subTaskModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="px-6 py-4 bg-slate-800 text-white flex justify-between items-center">
+                <div>
+                    <h3 class="font-semibold text-lg flex items-center gap-2">
+                        <i class="fa-solid fa-list-check text-emerald-400"></i> กิจกรรมย่อยและความคืบหน้า
+                    </h3>
+                    <p class="text-xs text-slate-300 mt-0.5" id="subTaskParentTitle">-</p>
+                </div>
+                <button onclick="closeModal('subTaskModal')" class="text-white/80 hover:text-white text-lg"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+                <!-- Add / Edit Subtask Form -->
+                <form id="subTaskForm" onsubmit="handleSaveSubTask(event)" class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                    <div class="flex justify-between items-center">
+                        <h4 class="text-xs font-bold text-slate-600 uppercase tracking-wider" id="subTaskFormTitle">เพิ่มกิจกรรมใหม่</h4>
+                        <button type="button" id="cancelEditSubTaskBtn" onclick="resetSubTaskForm()" class="text-xs text-rose-500 hover:underline hidden">ยกเลิกการแก้ไข</button>
+                    </div>
+                    <input type="hidden" id="editingSubTaskId">
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div class="sm:col-span-2">
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">ชื่อกิจกรรม <span class="text-rose-500">*</span></label>
+                            <input type="text" id="subTaskTitle" required placeholder="ระบูกิจกรรมย่อย..." class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">ผู้รับผิดชอบกิจกรรม <span class="text-indigo-600 font-normal">(PDPA)</span></label>
+                            <input type="text" id="subTaskAssignee" placeholder="ชื่อผู้รับผิดชอบ" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">หน่วยงาน / แผนก</label>
+                            <input type="text" id="subTaskDept" placeholder="เช่น ฝ่ายไอที / ฝ่ายการเงิน" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">วันที่เริ่มกิจกรรม</label>
+                            <input type="date" id="subTaskStartDate" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">วันที่สิ้นสุดกิจกรรม</label>
+                            <input type="date" id="subTaskEndDate" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">แนบเอกสารประกอบกิจกรรม (PDF, Word, Image)</label>
+                            <input type="file" id="subTaskFile" onchange="handleSubTaskFileUpload(event)" class="w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                            <input type="hidden" id="subTaskFileAttachment">
+                            <p id="fileUploadStatus" class="text-[10px] text-emerald-600 mt-1 hidden"><i class="fa-solid fa-circle-check"></i> แนบเอกสารเรียบร้อยแล้ว</p>
+                        </div>
+                    </div>
+
+                    <div class="pt-2 flex justify-end">
+                        <button type="submit" id="subTaskSubmitBtn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1">
+                            <i class="fa-solid fa-plus"></i> เพิ่มกิจกรรม
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Subtasks Progress List -->
+                <div>
+                    <div class="flex justify-between items-center mb-3">
+                        <h4 class="text-sm font-bold text-slate-700">รายการกิจกรรมย่อยทั้งหมด</h4>
+                        <span id="subTaskProgressBadge" class="text-xs bg-indigo-100 text-indigo-700 font-semibold px-2.5 py-1 rounded-full">ความคืบหน้า 0%</span>
+                    </div>
+
+                    <!-- List Container -->
+                    <div id="subTasksList" class="space-y-3">
+                        <!-- Render Subtasks dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+                <button onclick="closeModal('subTaskModal')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition">เรียบร้อย</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 3: แจ้งเตือนข้อความ Custom Alert Message Box (แทนการใช้ alert()) -->
+    <div id="msgModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center space-y-4">
+            <div id="msgIconContainer" class="w-12 h-12 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto text-xl">
+                <i id="msgIcon" class="fa-solid fa-circle-info"></i>
+            </div>
+            <div>
+                <h4 class="font-bold text-slate-800 text-base mb-1" id="msgTitle">แจ้งเตือน</h4>
+                <p class="text-sm text-slate-600" id="msgText">-</p>
+            </div>
+            <button onclick="closeModal('msgModal')" class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg text-sm transition">ตกลง</button>
+        </div>
+    </div>
+
+    <!-- MODAL 4: ข้อมูลความปลอดภัยและ PDPA Security Modal -->
+    <div id="securityModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4">
+            <div class="flex items-center gap-3 text-indigo-700 border-b border-slate-100 pb-3">
+                <i class="fa-solid fa-shield-halved text-2xl"></i>
+                <h3 class="font-bold text-lg">มาตรฐานความปลอดภัย & PDPA</h3>
+            </div>
+            <div class="text-xs text-slate-600 space-y-2 leading-relaxed">
+                <p><strong>1. การยืนยันตัวตนแบบ Email OTP:</strong> เพิ่มความปลอดภัยอีกขั้น ยืนยันรหัสผ่านทางอีเมลก่อนเข้าใช้งานทุกครั้งเพื่อป้องกันบุคคลภายนอกแอบอ้างเข้าถึงข้อมูล</p>
+                <p><strong>2. การเข้ารหัสข้อมูลส่วนบุคคล (AES Encryption):</strong> ข้อมูลชื่อผู้รับผิดชอบ และข้อมูลติดต่อ จะถูกเข้ารหัสผ่านอัลกอริทึม AES ก่อนบันทึกลงสู่หน่วยความจำ LocalStorage ของเบราว์เซอร์เสมอ เพื่อป้องกันการรั่วไหลตามมาตรฐาน PDPA</p>
+                <p><strong>3. การป้องกัน XSS (Cross-Site Scripting):</strong> ข้อความป้อนเข้าจากผู้ใช้ทุกจุดจะถูกกรองและแปลงอักขระ (HTML Escaping) ก่อนทำการแสดงผลบนหน้าจอ</p>
+            </div>
+            <div class="pt-2 text-right">
+                <button onclick="closeModal('securityModal')" class="px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700">เข้าใจแล้ว</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 5: Simulated OTP Notification Modal (การแจ้งเตือนรหัส OTP จำลอง) -->
+    <div id="otpNotificationModal" class="fixed top-4 right-4 z-50 max-w-sm w-full bg-slate-900 text-white rounded-2xl shadow-2xl p-4 border border-indigo-500/30 hidden animate-bounce">
+        <div class="flex items-start gap-3">
+            <div class="p-2 bg-indigo-600 rounded-xl text-white">
+                <i class="fa-solid fa-envelope-open-text"></i>
+            </div>
+            <div class="flex-1">
+                <h4 class="text-xs font-bold text-indigo-300 uppercase tracking-wider">จำลองอีเมลรับ OTP</h4>
+                <p class="text-xs text-slate-300 mt-1">รหัส OTP สำหรับเข้าใช้งานของคุณคือ:</p>
+                <div class="mt-2 bg-slate-800 p-2 rounded-lg text-center font-mono font-bold text-xl text-emerald-400 tracking-[0.3em]" id="simulatedOTPCode">
+                    000000
+                </div>
+                <p class="text-[10px] text-slate-400 mt-1 text-center">(รหัสนี้มีอายุ 3 นาที)</p>
+            </div>
+            <button onclick="closeModal('otpNotificationModal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT APP LOGIC -->
+    <script>
+        // --- 1. CONSTANTS & CONFIGURATION ---
+        const SECRET_KEY = "WorkTrackerPDPAKeySecret#2026"; 
+        const STORAGE_KEY = "work_tracker_app_tasks_v1";
+        const AUTH_KEY = "work_tracker_auth_user";
+
+        // Global Application State
+        let tasks = [];
+        let currentEditingTaskId = null;
+        let statusChartInstance = null;
+        let priorityChartInstance = null;
+
+        // OTP Authentication State
+        let generatedOTP = null;
+        let otpExpiryTime = null;
+        let otpTimerInterval = null;
+        let currentUserEmail = null;
+
+        // --- 2. OTP AUTHENTICATION SYSTEM ---
+        function checkAuthStatus() {
+            const savedUser = localStorage.getItem(AUTH_KEY);
+            if (savedUser) {
+                currentUserEmail = savedUser;
+                document.getElementById('currentUserEmail').innerText = currentUserEmail;
+                document.getElementById('authOverlay').classList.add('hidden');
+            } else {
+                document.getElementById('authOverlay').classList.remove('hidden');
+            }
+        }
+
+        function handleSendOTP(e) {
+            e.preventDefault();
+            const email = document.getElementById('authEmail').value.trim();
+            if (!email) return;
+
+            currentUserEmail = email;
+            document.getElementById('sentEmailDisplay').innerText = email;
+
+            // Generate Random 6-digit OTP
+            generatedOTP = Math.floor(100000 + Math.random() * 900000).toString();
+            otpExpiryTime = Date.now() + (3 * 60 * 1000); // 3 minutes
+
+            // Show Simulated OTP Notification Popup
+            document.getElementById('simulatedOTPCode').innerText = generatedOTP;
+            openModal('otpNotificationModal');
+
+            // UI Switch
+            document.getElementById('emailForm').classList.add('hidden');
+            document.getElementById('otpForm').classList.remove('hidden');
+
+            startOTPTimer();
+        }
+
+        function startOTPTimer() {
+            if (otpTimerInterval) clearInterval(otpTimerInterval);
+            
+            otpTimerInterval = setInterval(() => {
+                const remaining = Math.max(0, Math.floor((otpExpiryTime - Date.now()) / 1000));
+                const mins = String(Math.floor(remaining / 60)).padStart(2, '0');
+                const secs = String(remaining % 60).padStart(2, '0');
+                
+                document.getElementById('otpTimer').innerText = `${mins}:${secs}`;
+
+                if (remaining <= 0) {
+                    clearInterval(otpTimerInterval);
+                    generatedOTP = null;
+                    document.getElementById('otpTimerText').innerHTML = `<span class="text-rose-500 font-bold">รหัส OTP หมดอายุแล้ว</span>`;
+                }
+            }, 1000);
+        }
+
+        function resendOTP() {
+            document.getElementById('otpTimerText').innerHTML = `รหัสหมดอายุใน: <strong id="otpTimer">03:00</strong>`;
+            handleSendOTP(new Event('submit'));
+        }
+
+        function resetAuthStep() {
+            if (otpTimerInterval) clearInterval(otpTimerInterval);
+            document.getElementById('emailForm').classList.remove('hidden');
+            document.getElementById('otpForm').classList.add('hidden');
+            closeModal('otpNotificationModal');
+        }
+
+        function handleVerifyOTP(e) {
+            e.preventDefault();
+            const inputOTP = document.getElementById('otpCode').value.trim();
+
+            if (!generatedOTP || Date.now() > otpExpiryTime) {
+                showMessage('เกิดข้อผิดพลาด', 'รหัส OTP หมดอายุแล้ว กรุณากดส่งรหัสอีกครั้ง', 'error');
+                return;
+            }
+
+            if (inputOTP === generatedOTP) {
+                // Save Session
+                localStorage.setItem(AUTH_KEY, currentUserEmail);
+                document.getElementById('currentUserEmail').innerText = currentUserEmail;
+                
+                // Hide Overlay
+                closeModal('otpNotificationModal');
+                document.getElementById('authOverlay').classList.add('hidden');
+                showMessage('สำเร็จ', 'ยืนยันตัวตนสำเร็จ เข้าสู่ระบบเรียบร้อยแล้ว', 'success');
+            } else {
+                showMessage('แจ้งเตือน', 'รหัส OTP ไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง', 'error');
+            }
+        }
+
+        function logout() {
+            if (confirm('คุณต้องการออกจากระบบหรือไม่?')) {
+                localStorage.removeItem(AUTH_KEY);
+                location.reload();
+            }
+        }
+
+        // --- 3. SECURITY & UTILITY FUNCTIONS ---
+        function escapeHTML(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function encryptData(text) {
+            if (!text) return '';
+            try {
+                return CryptoJS.AES.encrypt(text.trim(), SECRET_KEY).toString();
+            } catch (e) {
+                return text;
+            }
+        }
+
+        function decryptData(ciphertext) {
+            if (!ciphertext) return '';
+            try {
+                const bytes = CryptoJS.AES.decrypt(ciphertext, SECRET_KEY);
+                const originalText = bytes.toString(CryptoJS.enc.Utf8);
+                return originalText || ciphertext;
+            } catch (e) {
+                return ciphertext;
+            }
+        }
+
+        function showMessage(title, text, type = 'info') {
+            document.getElementById('msgTitle').innerText = title;
+            document.getElementById('msgText').innerText = text;
+            const iconEl = document.getElementById('msgIcon');
+            const iconContainer = document.getElementById('msgIconContainer');
+
+            if (type === 'success') {
+                iconContainer.className = "w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto text-xl";
+                iconEl.className = "fa-solid fa-circle-check";
+            } else if (type === 'error') {
+                iconContainer.className = "w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto text-xl";
+                iconEl.className = "fa-solid fa-triangle-exclamation";
+            } else {
+                iconContainer.className = "w-12 h-12 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto text-xl";
+                iconEl.className = "fa-solid fa-circle-info";
+            }
+            openModal('msgModal');
+        }
+
+        function openModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        function openSecurityInfoModal() {
+            openModal('securityModal');
+        }
+
+        function getStatusBadgeHTML(status) {
+            switch(status) {
+                case 'PENDING':
+                    return `<span class="bg-amber-100 text-amber-700 text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1"><i class="fa-solid fa-clock text-[10px]"></i> รอดำเนินการ</span>`;
+                case 'IN_PROGRESS':
+                    return `<span class="bg-blue-100 text-blue-700 text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1"><i class="fa-solid fa-spinner fa-spin text-[10px]"></i> กำลังดำเนินการ</span>`;
+                case 'COMPLETED':
+                    return `<span class="bg-emerald-100 text-emerald-700 text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1"><i class="fa-solid fa-circle-check text-[10px]"></i> เสร็จสิ้น</span>`;
+                case 'CANCELLED':
+                    return `<span class="bg-rose-100 text-rose-700 text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1"><i class="fa-solid fa-ban text-[10px]"></i> ยกเลิก</span>`;
+                default:
+                    return '';
+            }
+        }
+
+        function getPriorityBadgeClass(priority) {
+            switch(priority) {
+                case 'HIGH': return 'bg-rose-100 text-rose-700 border border-rose-200';
+                case 'MEDIUM': return 'bg-amber-100 text-amber-700 border border-amber-200';
+                case 'LOW': return 'bg-emerald-100 text-emerald-700 border border-emerald-200';
+                default: return 'bg-slate-100 text-slate-600';
+            }
+        }
+
+        // --- 4. DATA STORAGE MANAGEMENT (Real-time Cloud Database Integration) ---
+        let db = null;
+        let auth = null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'work-tracker-app';
+
+        async function initCloudDatabase() {
+            try {
+                if (typeof __firebase_config !== 'undefined' && window.FirebaseSDK) {
+                    const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, getFirestore, collection, onSnapshot } = window.FirebaseSDK;
+                    const firebaseConfig = JSON.parse(__firebase_config);
+                    const app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
+
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+
+                    // Real-time Cloud Listener across all connected PCs/Devices
+                    const tasksRef = collection(db, 'artifacts', appId, 'public', 'data', 'tasks');
+                    onSnapshot(tasksRef, (snapshot) => {
+                        tasks = [];
+                        snapshot.forEach((docSnap) => {
+                            tasks.push({ id: docSnap.id, ...docSnap.data() });
+                        });
+                        renderAll();
+                    }, (err) => {
+                        console.error("Cloud Sync Error:", err);
+                        loadLocalTasksFallback();
+                    });
+                } else {
+                    loadLocalTasksFallback();
+                }
+            } catch (e) {
+                console.error("Cloud Connection Fallback to Offline:", e);
+                loadLocalTasksFallback();
+            }
+        }
+
+        function loadLocalTasksFallback() {
+            const data = localStorage.getItem(STORAGE_KEY);
+            if (data) {
+                try { tasks = JSON.parse(data); } catch (e) { tasks = []; }
+            } else {
+                tasks = [
+                    {
+                        id: 't-1',
+                        title: 'จัดทำสรุปงบประมาณไตรมาส 1',
+                        description: 'รวบรวมเอกสารทางการเงินและสรุปนำเสนอผู้บริหาร',
+                        assignee: encryptData('สมชาย รักดี'),
+                        contact: encryptData('081-999-8888'),
+                        dueDate: '2026-03-31',
+                        priority: 'HIGH',
+                        status: 'IN_PROGRESS',
+                        subTasks: [
+                            { id: 'st-1', title: 'เก็บเอกสารใบเสร็จ', completed: true, status: 'ACTIVE' },
+                            { id: 'st-2', title: 'ทำสไลด์สรุปผล', completed: false, status: 'ACTIVE' }
+                        ]
+                    }
+                ];
+            }
+            renderAll();
+        }
+
+        async function saveTasksCloud(taskObj, logAction = "UPDATE", beforeData = null, afterData = null) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+
+            if (db && auth && auth.currentUser) {
+                try {
+                    const { doc, setDoc } = window.FirebaseSDK;
+                    const taskRef = doc(db, 'artifacts', appId, 'public', 'data', 'tasks', taskObj.id);
+                    await setDoc(taskRef, taskObj, { merge: true });
+
+                    await recordAuditLog(taskObj.id, logAction, beforeData, afterData);
+                } catch(err) {
+                    console.error("Error saving to cloud:", err);
+                }
+            } else {
+                renderAll();
+            }
+        }
+
+        function saveTasks() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+            renderAll();
+        }
+
+        async function recordAuditLog(taskId, action, before, after) {
+            if (!db || !auth || !auth.currentUser) return;
+            try {
+                const { collection, addDoc } = window.FirebaseSDK;
+                const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'audit_logs');
+                await addDoc(logsRef, {
+                    taskId: taskId,
+                    user: currentUserEmail || 'Unverified User',
+                    action: action,
+                    timestamp: new Date().toISOString(),
+                    before: before ? JSON.stringify(before) : null,
+                    after: after ? JSON.stringify(after) : null
+                });
+            } catch(e) {
+                console.error("Audit Log Record Error:", e);
+            }
+        }
+
+        async function openAuditLogModal(taskId) {
+            openModal('auditLogModal');
+            const container = document.getElementById('auditLogContainer');
+            container.innerHTML = `<p class="text-xs text-slate-400 text-center py-6"><i class="fa-solid fa-spinner fa-spin text-indigo-500 text-base mb-2"></i><br>กำลังโหลดประวัติการทำรายการ...</p>`;
+
+            if (!db) {
+                container.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">เปิดใช้งานประวัติการแก้ไขเฉพาะโหมดการเชื่อมต่อ Cloud</p>`;
+                return;
+            }
+
+            try {
+                const { collection, onSnapshot } = window.FirebaseSDK;
+                const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'audit_logs');
+                
+                onSnapshot(logsRef, (snapshot) => {
+                    let taskLogs = [];
+                    snapshot.forEach(docSnap => {
+                        const data = docSnap.data();
+                        if (data.taskId === taskId) taskLogs.push(data);
+                    });
+
+                    taskLogs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+                    if (taskLogs.length === 0) {
+                        container.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">ยังไม่มีประวัติการแก้ไขรายการนี้</p>`;
+                        return;
+                    }
+
+                    container.innerHTML = taskLogs.map(log => {
+                        const dateStr = new Date(log.timestamp).toLocaleString('th-TH');
+                        const beforeObj = log.before ? JSON.parse(log.before) : null;
+                        const afterObj = log.after ? JSON.parse(log.after) : null;
+
+                        return `
+                            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2">
+                                <div class="flex justify-between items-center text-slate-600 border-b border-slate-200 pb-1.5">
+                                    <span class="font-bold text-indigo-700"><i class="fa-solid fa-user-gear"></i> ${escapeHTML(log.user)}</span>
+                                    <span class="text-[11px] text-slate-400"><i class="fa-regular fa-clock"></i> ${dateStr}</span>
+                                </div>
+                                <div class="text-[11px] font-semibold text-slate-700">การกระทำ: <span class="text-emerald-600">${log.action}</span></div>
+                                
+                                ${beforeObj ? `
+                                    <div class="p-2 bg-rose-50/50 rounded border border-rose-100 text-[11px]">
+                                        <div class="font-bold text-rose-700 mb-0.5">ข้อมูลงวดก่อนทำรายการ (Before):</div>
+                                        <p class="text-slate-600">ชื่อ: ${escapeHTML(beforeObj.title)} | สถานะ: ${beforeObj.status} | ความสำคัญ: ${beforeObj.priority}</p>
+                                    </div>
+                                ` : ''}
+
+                                ${afterObj ? `
+                                    <div class="p-2 bg-emerald-50/50 rounded border border-emerald-100 text-[11px]">
+                                        <div class="font-bold text-emerald-700 mb-0.5">ข้อมูลหลังทำรายการ (After):</div>
+                                        <p class="text-slate-600">ชื่อ: ${escapeHTML(afterObj.title)} | สถานะ: ${afterObj.status} | ความสำคัญ: ${afterObj.priority}</p>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    }).join('');
+                }, (err) => {
+                    container.innerHTML = `<p class="text-xs text-rose-500 text-center py-4">ไม่สามารถดึงข้อมูลประวัติได้</p>`;
+                });
+            } catch(e) {
+                container.innerHTML = `<p class="text-xs text-rose-500 text-center py-4">เกิดข้อผิดพลาดในการโหลดประวัติ</p>`;
+            }
+        }
+
+        // --- 5. NAVIGATION & TAB SWITCHING ---
+        function switchTab(tabName) {
+            const dashSec = document.getElementById('dashboardSection');
+            const tasksSec = document.getElementById('tasksSection');
+            const dashBtn = document.getElementById('tabDashboardBtn');
+            const tasksBtn = document.getElementById('tabTasksBtn');
+
+            const mobDash = document.getElementById('mobileNavDash');
+            const mobTasks = document.getElementById('mobileNavTasks');
+
+            if (tabName === 'dashboard') {
+                dashSec.classList.remove('hidden');
+                tasksSec.classList.add('hidden');
+                dashBtn.className = "flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold transition flex items-center justify-center gap-2 bg-indigo-50 text-indigo-700 shadow-sm";
+                tasksBtn.className = "flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2 text-slate-600 hover:text-indigo-600";
+                
+                mobDash.className = "flex flex-col items-center text-indigo-600 font-medium text-[11px]";
+                mobTasks.className = "flex flex-col items-center text-slate-400 font-medium text-[11px]";
+            } else {
+                dashSec.classList.add('hidden');
+                tasksSec.classList.remove('hidden');
+                tasksBtn.className = "flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold transition flex items-center justify-center gap-2 bg-indigo-50 text-indigo-700 shadow-sm";
+                dashBtn.className = "flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2 text-slate-600 hover:text-indigo-600";
+                
+                mobTasks.className = "flex flex-col items-center text-indigo-600 font-medium text-[11px]";
+                mobDash.className = "flex flex-col items-center text-slate-400 font-medium text-[11px]";
+            }
+        }
+
+        // --- 6. DASHBOARD & RENDER LOGIC ---
+        function renderAll() {
+            renderDashboard();
+            renderTasks();
+        }
+
+        function renderDashboard() {
+            const total = tasks.length;
+            const pending = tasks.filter(t => t.status === 'PENDING').length;
+            const inProgress = tasks.filter(t => t.status === 'IN_PROGRESS').length;
+            const completed = tasks.filter(t => t.status === 'COMPLETED').length;
+            const cancelled = tasks.filter(t => t.status === 'CANCELLED').length;
+
+            document.getElementById('statTotal').innerText = total;
+            document.getElementById('statPending').innerText = pending;
+            document.getElementById('statInProgress').innerText = inProgress;
+            document.getElementById('statCompleted').innerText = completed;
+            document.getElementById('statCancelled').innerText = cancelled;
+
+            const recentContainer = document.getElementById('recentTasksList');
+            if (tasks.length === 0) {
+                recentContainer.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">ยังไม่มีงานในระบบ</p>`;
+            } else {
+                const sorted = [...tasks].reverse().slice(0, 3);
+                recentContainer.innerHTML = sorted.map(t => {
+                    const statusBadge = getStatusBadgeHTML(t.status);
+                    const decryptedName = escapeHTML(decryptData(t.assignee));
+                    return `
+                        <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 hover:bg-slate-100 transition">
+                            <div class="space-y-0.5">
+                                <h4 class="text-sm font-semibold text-slate-800">${escapeHTML(t.title)}</h4>
+                                <p class="text-xs text-slate-500"><i class="fa-solid fa-user text-slate-400"></i> ${decryptedName || 'ไม่ระบุ'} | กำหนดส่ง: ${t.dueDate || '-'}</p>
+                            </div>
+                            <div>${statusBadge}</div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            renderCharts(pending, inProgress, completed, cancelled);
+        }
+
+        function renderCharts(pending, inProgress, completed, cancelled) {
+            const ctx1 = document.getElementById('statusChart').getContext('2d');
+            if (statusChartInstance) statusChartInstance.destroy();
+            
+            statusChartInstance = new Chart(ctx1, {
+                type: 'doughnut',
+                data: {
+                    labels: ['รอดำเนินการ', 'กำลังดำเนินการ', 'เสร็จสิ้น', 'ยกเลิก'],
+                    datasets: [{
+                        data: [pending, inProgress, completed, cancelled],
+                        backgroundColor: ['#f59e0b', '#3b82f6', '#10b981', '#f43f5e'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { font: { family: 'Prompt', size: 11 } } } }
+                }
+            });
+
+            const highCount = tasks.filter(t => t.priority === 'HIGH').length;
+            const mediumCount = tasks.filter(t => t.priority === 'MEDIUM').length;
+            const lowCount = tasks.filter(t => t.priority === 'LOW').length;
+
+            const ctx2 = document.getElementById('priorityChart').getContext('2d');
+            if (priorityChartInstance) priorityChartInstance.destroy();
+
+            priorityChartInstance = new Chart(ctx2, {
+                type: 'bar',
+                data: {
+                    labels: ['สูง (High)', 'ปานกลาง (Medium)', 'ต่ำ (Low)'],
+                    datasets: [{
+                        label: 'จำนวนงาน',
+                        data: [highCount, mediumCount, lowCount],
+                        backgroundColor: ['#ef4444', '#f59e0b', '#10b981'],
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { stepSize: 1, font: { family: 'Prompt' } } },
+                        x: { ticks: { font: { family: 'Prompt' } } }
+                    }
+                }
+            });
+        }
+
+        function renderTasks() {
+            const container = document.getElementById('tasksContainer');
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const filterStatus = document.getElementById('filterStatus').value;
+            const filterPriority = document.getElementById('filterPriority').value;
+
+            const filtered = tasks.filter(t => {
+                const decAssignee = decryptData(t.assignee).toLowerCase();
+                const matchSearch = t.title.toLowerCase().includes(search) || decAssignee.includes(search);
+                const matchStatus = filterStatus === 'ALL' || t.status === filterStatus;
+                const matchPriority = filterPriority === 'ALL' || t.priority === filterPriority;
+                return matchSearch && matchStatus && matchPriority;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full py-12 text-center text-slate-400">
+                        <i class="fa-solid fa-folder-open text-4xl mb-3 text-slate-300"></i>
+                        <p class="text-sm">ไม่พบรายการงานที่ค้นหา</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = filtered.map(t => {
+                const decAssignee = escapeHTML(decryptData(t.assignee));
+                const decContact = escapeHTML(decryptData(t.contact));
+                
+                const subtasks = t.subTasks || [];
+                const doneSubtasks = subtasks.filter(s => s.completed && s.status !== 'CANCELLED').length;
+                const activeSubtasks = subtasks.filter(s => s.status !== 'CANCELLED').length;
+                const progressPct = activeSubtasks > 0 ? Math.round((doneSubtasks / activeSubtasks) * 100) : (t.status === 'COMPLETED' ? 100 : 0);
+
+                return `
+                    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition flex flex-col justify-between overflow-hidden">
+                        <div class="p-5 space-y-3">
+                            <div class="flex justify-between items-start gap-2">
+                                <span class="${getPriorityBadgeClass(t.priority)} text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase">
+                                    ${t.priority === 'HIGH' ? 'ความสำคัญ: สูง' : t.priority === 'MEDIUM' ? 'ความสำคัญ: ปานกลาง' : 'ความสำคัญ: ต่ำ'}
+                                </span>
+                                ${getStatusBadgeHTML(t.status)}
+                            </div>
+
+                            <div>
+                                <h3 class="font-bold text-slate-800 text-base leading-snug mb-1">${escapeHTML(t.title)}</h3>
+                                <p class="text-xs text-slate-500 line-clamp-2">${escapeHTML(t.description) || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>
+                            </div>
+
+                            <div class="space-y-1">
+                                <div class="flex justify-between text-[11px] font-semibold text-slate-500">
+                                    <span>ความคืบหน้า</span>
+                                    <span>${progressPct}%</span>
+                                </div>
+                                <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                    <div class="bg-indigo-600 h-full rounded-full transition-all duration-300" style="width: ${progressPct}%"></div>
+                                </div>
+                            </div>
+
+                            <div class="pt-2 border-t border-slate-100 text-xs text-slate-600 space-y-1">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-user-check text-indigo-500"></i>
+                                    <span>${decAssignee || 'ไม่ระบุผู้รับผิดชอบ'}</span>
+                                    <i class="fa-solid fa-lock text-[10px] text-emerald-600" title="encrypted data"></i>
+                                </div>
+                                ${decContact ? `<div class="flex items-center gap-2 text-slate-400 text-[11px]"><i class="fa-solid fa-phone"></i> ${decContact}</div>` : ''}
+                                <div class="flex items-center gap-2 text-slate-400 text-[11px]">
+                                    <i class="fa-regular fa-calendar font-normal"></i> กำหนดส่ง: ${t.dueDate || 'ไม่ระบุ'}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-50 px-5 py-3 border-t border-slate-100 flex justify-between items-center text-xs">
+                            <button onclick="openSubTaskModal('${t.id}')" class="text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1">
+                                <i class="fa-solid fa-list-check"></i> กิจกรรม (${doneSubtasks}/${activeSubtasks})
+                            </button>
+
+                            <div class="flex items-center space-x-2">
+                                <button onclick="openAuditLogModal('${t.id}')" class="text-slate-400 hover:text-indigo-600 p-1" title="ดูประวัติการแก้ไข">
+                                    <i class="fa-solid fa-clock-rotate-left"></i>
+                                </button>
+                                <button onclick="openEditTaskModal('${t.id}')" class="text-slate-500 hover:text-indigo-600 p-1" title="แก้ไข">
+                                    <i class="fa-solid fa-pen-to-square"></i>
+                                </button>
+                                <button onclick="deleteTask('${t.id}')" class="text-slate-500 hover:text-rose-600 p-1" title="ลบ">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // --- 7. TASK CRUD OPERATIONS ---
+        function openEditTaskModal(id) {
+            const task = tasks.find(t => t.id === id);
+            if (!task) return;
+
+            document.getElementById('taskId').value = task.id;
+            document.getElementById('taskTitle').value = task.title;
+            document.getElementById('taskDescription').value = task.description || '';
+            document.getElementById('taskAssignee').value = decryptData(task.assignee);
+            document.getElementById('taskContact').value = decryptData(task.contact);
+            document.getElementById('taskDueDate').value = task.dueDate || '';
+            document.getElementById('taskPriority').value = task.priority || 'MEDIUM';
+            document.getElementById('taskStatus').value = task.status || 'PENDING';
+
+            document.getElementById('taskModalTitle').innerHTML = `<i class="fa-solid fa-pen-to-square"></i> แก้ไขงานหลัก`;
+            openModal('taskModal');
+        }
+
+        async function handleSaveTask(e) {
+            e.preventDefault();
+            const id = document.getElementById('taskId').value;
+            const title = document.getElementById('taskTitle').value;
+            const description = document.getElementById('taskDescription').value;
+            const assigneeRaw = document.getElementById('taskAssignee').value;
+            const contactRaw = document.getElementById('taskContact').value;
+            const dueDate = document.getElementById('taskDueDate').value;
+            const priority = document.getElementById('taskPriority').value;
+            const status = document.getElementById('taskStatus').value;
+
+            const assigneeEnc = encryptData(assigneeRaw);
+            const contactEnc = encryptData(contactRaw);
+
+            let beforeData = null;
+            let targetTask = null;
+
+            if (id) {
+                const index = tasks.findIndex(t => t.id === id);
+                if (index !== -1) {
+                    beforeData = { ...tasks[index] };
+                    tasks[index] = {
+                        ...tasks[index],
+                        title,
+                        description,
+                        assignee: assigneeEnc,
+                        contact: contactEnc,
+                        dueDate,
+                        priority,
+                        status
+                    };
+                    targetTask = tasks[index];
+                }
+            } else {
+                const newTask = {
+                    id: 't-' + Date.now(),
+                    title,
+                    description,
+                    assignee: assigneeEnc,
+                    contact: contactEnc,
+                    dueDate,
+                    priority,
+                    status,
+                    subTasks: []
+                };
+                tasks.push(newTask);
+                targetTask = newTask;
+            }
+
+            await saveTasksCloud(targetTask, id ? "UPDATE_TASK" : "CREATE_TASK", beforeData, targetTask);
+            closeModal('taskModal');
+            showMessage('สำเร็จ', 'บันทึกข้อมูลเรียบร้อยแล้ว', 'success');
+            document.getElementById('taskForm').reset();
+            document.getElementById('taskId').value = '';
+        }
+
+        async function deleteTask(id) {
+            if (confirm("คุณแน่ใจหรือไม่ว่าต้องการลบรายการงานนี้?")) {
+                const targetTask = tasks.find(t => t.id === id);
+                tasks = tasks.filter(t => t.id !== id);
+                
+                if (db && auth && auth.currentUser) {
+                    try {
+                        const { doc, deleteDoc } = window.FirebaseSDK;
+                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', id));
+                        await recordAuditLog(id, "DELETE_TASK", targetTask, null);
+                    } catch(e) {}
+                }
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+                showMessage('ลบข้อมูล', 'ลบงานออกจากระบบเรียบร้อยแล้ว', 'info');
+                renderAll();
+            }
+        }
+
+        // --- 8. SUB-TASKS & ACTIVITY TRACKING LOGIC ---
+        let currentSubTaskFile = null;
+
+        function openSubTaskModal(taskId) {
+            currentEditingTaskId = taskId;
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return;
+
+            document.getElementById('subTaskParentTitle').innerText = 'งานหลัก: ' + task.title;
+            resetSubTaskForm();
+            renderSubTasks();
+            openModal('subTaskModal');
+        }
+
+        function resetSubTaskForm() {
+            document.getElementById('subTaskForm').reset();
+            document.getElementById('editingSubTaskId').value = '';
+            document.getElementById('subTaskFileAttachment').value = '';
+            currentSubTaskFile = null;
+            document.getElementById('fileUploadStatus').classList.add('hidden');
+            document.getElementById('subTaskFormTitle').innerText = 'เพิ่มกิจกรรมใหม่';
+            document.getElementById('subTaskSubmitBtn').innerHTML = `<i class="fa-solid fa-plus"></i> เพิ่มกิจกรรม`;
+            document.getElementById('cancelEditSubTaskBtn').classList.add('hidden');
+        }
+
+        function handleSubTaskFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                currentSubTaskFile = {
+                    name: file.name,
+                    size: (file.size / 1024).toFixed(1) + ' KB',
+                    data: event.target.result
+                };
+                document.getElementById('subTaskFileAttachment').value = JSON.stringify(currentSubTaskFile);
+                document.getElementById('fileUploadStatus').classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function renderSubTasks() {
+            const task = tasks.find(t => t.id === currentEditingTaskId);
+            if (!task) return;
+
+            const subtasks = task.subTasks || [];
+            const container = document.getElementById('subTasksList');
+            const doneCount = subtasks.filter(s => s.completed && s.status !== 'CANCELLED').length;
+            const activeCount = subtasks.filter(s => s.status !== 'CANCELLED').length;
+            const pct = activeCount > 0 ? Math.round((doneCount / activeCount) * 100) : 0;
+
+            document.getElementById('subTaskProgressBadge').innerText = `ความคืบหน้า ${pct}% (${doneCount}/${activeCount})`;
+
+            if (subtasks.length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">ยังไม่มีกิจกรรมย่อย เพิ่มกิจกรรมเพื่อเริ่มติดตามงาน</p>`;
+                return;
+            }
+
+            const today = new Date().toISOString().split('T')[0];
+
+            container.innerHTML = subtasks.map((st) => {
+                const decAssignee = escapeHTML(decryptData(st.assignee));
+                const isOverdue = st.endDate && st.endDate < today && !st.completed && st.status !== 'CANCELLED';
+                const isCancelled = st.status === 'CANCELLED';
+
+                return `
+                    <div class="p-4 bg-white rounded-xl border ${isOverdue ? 'border-rose-300 bg-rose-50/30' : isCancelled ? 'border-slate-200 bg-slate-50 opacity-60' : 'border-slate-200'} space-y-2">
+                        <div class="flex items-start justify-between gap-2">
+                            <label class="flex items-center space-x-3 cursor-pointer flex-1">
+                                <input type="checkbox" ${st.completed ? 'checked' : ''} ${isCancelled ? 'disabled' : ''} onchange="toggleSubTask('${st.id}')" class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500">
+                                <div>
+                                    <span class="text-sm font-semibold ${st.completed ? 'line-through text-slate-400' : isCancelled ? 'line-through text-slate-400' : 'text-slate-800'}">${escapeHTML(st.title)}</span>
+                                    ${isCancelled ? '<span class="ml-2 text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded">ยกเลิกกิจกรรมแล้ว</span>' : ''}
+                                    ${isOverdue ? '<span class="ml-2 text-[10px] bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded animate-pulse"><i class="fa-solid fa-triangle-exclamation"></i> เกินกำหนดส่ง!</span>' : ''}
+                                </div>
+                            </label>
+
+                            <div class="flex items-center space-x-1">
+                                <button onclick="editSubTask('${st.id}')" class="text-slate-400 hover:text-indigo-600 p-1 text-xs" title="แก้ไขกิจกรรม">
+                                    <i class="fa-solid fa-pen-to-square"></i>
+                                </button>
+                                <button onclick="toggleCancelSubTask('${st.id}')" class="text-slate-400 hover:text-amber-600 p-1 text-xs" title="${isCancelled ? 'คืนสถานะ' : 'ยกเลิกกิจกรรม'}">
+                                    <i class="fa-solid fa-ban"></i>
+                                </button>
+                                <button onclick="deleteSubTask('${st.id}')" class="text-slate-400 hover:text-rose-500 p-1 text-xs" title="ลบ">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Details Row -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-500 pt-1 border-t border-slate-100">
+                            <div>
+                                <i class="fa-solid fa-user text-indigo-500"></i> ผู้รับผิดชอบ: <strong class="text-slate-700">${decAssignee || 'ไม่ระบุ'}</strong>
+                                ${st.dept ? `<span class="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded ml-1 text-slate-600">(${escapeHTML(st.dept)})</span>` : ''}
+                            </div>
+                            <div>
+                                <i class="fa-regular fa-calendar-check text-indigo-500"></i> ระยะเวลา: ${st.startDate || '-'} ถึง ${st.endDate || '-'}
+                            </div>
+                        </div>
+
+                        <!-- File Attachment Row -->
+                        ${st.file ? `
+                            <div class="pt-1">
+                                <a href="${st.file.data}" download="${st.file.name}" class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[11px] font-medium transition">
+                                    <i class="fa-solid fa-paperclip"></i>
+                                    <span>${escapeHTML(st.file.name)} (${st.file.size})</span>
+                                    <i class="fa-solid fa-download ml-1 text-[10px]"></i>
+                                </a>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function handleSaveSubTask(e) {
+            e.preventDefault();
+            const subTaskId = document.getElementById('editingSubTaskId').value;
+            const title = document.getElementById('subTaskTitle').value.trim();
+            const assigneeRaw = document.getElementById('subTaskAssignee').value.trim();
+            const dept = document.getElementById('subTaskDept').value.trim();
+            const startDate = document.getElementById('subTaskStartDate').value;
+            const endDate = document.getElementById('subTaskEndDate').value;
+            const fileAttachmentStr = document.getElementById('subTaskFileAttachment').value;
+
+            if (!title || !currentEditingTaskId) return;
+
+            const taskIndex = tasks.findIndex(t => t.id === currentEditingTaskId);
+            if (taskIndex !== -1) {
+                if (!tasks[taskIndex].subTasks) tasks[taskIndex].subTasks = [];
+
+                let fileObj = currentSubTaskFile;
+                if (!fileObj && fileAttachmentStr) {
+                    try { fileObj = JSON.parse(fileAttachmentStr); } catch(err){}
+                }
+
+                if (subTaskId) {
+                    const subIndex = tasks[taskIndex].subTasks.findIndex(s => s.id === subTaskId);
+                    if (subIndex !== -1) {
+                        tasks[taskIndex].subTasks[subIndex] = {
+                            ...tasks[taskIndex].subTasks[subIndex],
+                            title,
+                            assignee: encryptData(assigneeRaw),
+                            dept,
+                            startDate,
+                            endDate,
+                            file: fileObj || tasks[taskIndex].subTasks[subIndex].file
+                        };
+                    }
+                } else {
+                    tasks[taskIndex].subTasks.push({
+                        id: 'st-' + Date.now(),
+                        title: title,
+                        assignee: encryptData(assigneeRaw),
+                        dept: dept,
+                        startDate: startDate,
+                        endDate: endDate,
+                        completed: false,
+                        status: 'ACTIVE',
+                        file: fileObj || null
+                    });
+                }
+
+                if (tasks[taskIndex].status === 'PENDING') {
+                    tasks[taskIndex].status = 'IN_PROGRESS';
+                }
+
+                saveTasksCloud(tasks[taskIndex], "UPDATE_SUBTASK", null, tasks[taskIndex]);
+                renderSubTasks();
+                resetSubTaskForm();
+            }
+        }
+
+        function editSubTask(subTaskId) {
+            const task = tasks.find(t => t.id === currentEditingTaskId);
+            if (!task) return;
+            const sub = task.subTasks.find(s => s.id === subTaskId);
+            if (!sub) return;
+
+            document.getElementById('editingSubTaskId').value = sub.id;
+            document.getElementById('subTaskTitle').value = sub.title;
+            document.getElementById('subTaskAssignee').value = decryptData(sub.assignee);
+            document.getElementById('subTaskDept').value = sub.dept || '';
+            document.getElementById('subTaskStartDate').value = sub.startDate || '';
+            document.getElementById('subTaskEndDate').value = sub.endDate || '';
+
+            if (sub.file) {
+                document.getElementById('subTaskFileAttachment').value = JSON.stringify(sub.file);
+                document.getElementById('fileUploadStatus').classList.remove('hidden');
+            } else {
+                document.getElementById('subTaskFileAttachment').value = '';
+                document.getElementById('fileUploadStatus').classList.add('hidden');
+            }
+
+            document.getElementById('subTaskFormTitle').innerText = 'แก้ไขกิจกรรม';
+            document.getElementById('subTaskSubmitBtn').innerHTML = `<i class="fa-solid fa-floppy-disk"></i> บันทึกกิจกรรม`;
+            document.getElementById('cancelEditSubTaskBtn').classList.remove('hidden');
+        }
+
+        function toggleCancelSubTask(subTaskId) {
+            const taskIndex = tasks.findIndex(t => t.id === currentEditingTaskId);
+            if (taskIndex !== -1) {
+                const subIndex = tasks[taskIndex].subTasks.findIndex(s => s.id === subTaskId);
+                if (subIndex !== -1) {
+                    const currentStatus = tasks[taskIndex].subTasks[subIndex].status;
+                    tasks[taskIndex].subTasks[subIndex].status = currentStatus === 'CANCELLED' ? 'ACTIVE' : 'CANCELLED';
+                    saveTasksCloud(tasks[taskIndex], "TOGGLE_CANCEL_SUBTASK", null, tasks[taskIndex]);
+                    renderSubTasks();
+                }
+            }
+        }
+
+        function toggleSubTask(subTaskId) {
+            const taskIndex = tasks.findIndex(t => t.id === currentEditingTaskId);
+            if (taskIndex !== -1) {
+                const subIndex = tasks[taskIndex].subTasks.findIndex(s => s.id === subTaskId);
+                if (subIndex !== -1) {
+                    tasks[taskIndex].subTasks[subIndex].completed = !tasks[taskIndex].subTasks[subIndex].completed;
+                    
+                    const allSub = tasks[taskIndex].subTasks.filter(s => s.status !== 'CANCELLED');
+                    const allDone = allSub.length > 0 && allSub.every(s => s.completed);
+                    if (allDone) {
+                        tasks[taskIndex].status = 'COMPLETED';
+                    } else if (tasks[taskIndex].status === 'COMPLETED' && !allDone) {
+                        tasks[taskIndex].status = 'IN_PROGRESS';
+                    }
+
+                    saveTasksCloud(tasks[taskIndex], "TOGGLE_SUBTASK", null, tasks[taskIndex]);
+                    renderSubTasks();
+                }
+            }
+        }
+
+        function deleteSubTask(subTaskId) {
+            if (confirm("คุณต้องการลบกิจกรรมย่อยนี้หรือไม่?")) {
+                const taskIndex = tasks.findIndex(t => t.id === currentEditingTaskId);
+                if (taskIndex !== -1) {
+                    tasks[taskIndex].subTasks = tasks[taskIndex].subTasks.filter(s => s.id !== subTaskId);
+                    saveTasksCloud(tasks[taskIndex], "DELETE_SUBTASK", null, tasks[taskIndex]);
+                    renderSubTasks();
+                }
+            }
+        }
+
+        // --- 9. EXPORT TO EXCEL (CSV) FUNCTION ---
+        function exportToExcel() {
+            if (tasks.length === 0) {
+                showMessage('แจ้งเตือน', 'ไม่มีข้อมูลงานในระบบสำหรับส่งออก', 'info');
+                return;
+            }
+
+            const headers = ['รหัสงาน', 'ชื่อโครงการ/งานหลัก', 'รายละเอียด', 'ผู้รับผิดชอบ (PDPA Decrypted)', 'เบอร์ติดต่อ/อีเมล', 'กำหนดส่ง', 'ความสำคัญ', 'สถานะ', 'ความคืบหน้า (%)'];
+            
+            const rows = tasks.map(t => {
+                const subtasks = t.subTasks || [];
+                const doneCount = subtasks.filter(s => s.completed && s.status !== 'CANCELLED').length;
+                const activeCount = subtasks.filter(s => s.status !== 'CANCELLED').length;
+                const progressPct = activeCount > 0 ? Math.round((doneCount / activeCount) * 100) : (t.status === 'COMPLETED' ? 100 : 0);
+                
+                const priorityText = t.priority === 'HIGH' ? 'สูง' : t.priority === 'MEDIUM' ? 'ปานกลาง' : 'ต่ำ';
+                let statusText = 'รอดำเนินการ';
+                if (t.status === 'IN_PROGRESS') statusText = 'กำลังดำเนินการ';
+                else if (t.status === 'COMPLETED') statusText = 'เสร็จสิ้น';
+                else if (t.status === 'CANCELLED') statusText = 'ยกเลิก';
+
+                return [
+                    `"${t.id}"`,
+                    `"${(t.title || '').replace(/"/g, '""')}"`,
+                    `"${(t.description || '').replace(/"/g, '""')}"`,
+                    `"${(decryptData(t.assignee) || '').replace(/"/g, '""')}"`,
+                    `"${(decryptData(t.contact) || '').replace(/"/g, '""')}"`,
+                    `"${t.dueDate || ''}"`,
+                    `"${priorityText}"`,
+                    `"${statusText}"`,
+                    `"${progressPct}%"`
+                ];
+            });
+
+            const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            
+            const today = new Date().toISOString().split('T')[0];
+            link.setAttribute('download', `Work_Tracker_Export_${today}.csv`);
+            document.body.appendChild(link);
+            
+            link.click();
+            document.body.removeChild(link);
+            
+            showMessage('สำเร็จ', 'ส่งออกข้อมูลเป็นไฟล์ Excel (CSV) เรียบร้อยแล้ว', 'success');
+        }
+
+        // --- INITIALIZATION ---
+        window.onload = function() {
+            checkAuthStatus();
+            initCloudDatabase();
+        };
+    </script>
+</body>
+</html>
