@@ -541,7 +541,7 @@
             if (data) {
                 try { registeredUsers = JSON.parse(data); } catch(e) { registeredUsers = []; }
             } else {
-                registeredUsers = ['roj.108056@gmail.com'];
+                registeredUsers = ['อีเมลจริงของท่าน@company.com'];
                 saveRegisteredUsers();
             }
         }
@@ -710,7 +710,7 @@
                 const SDK = window.FirebaseSDK;
                 if (SDK && SDK.db) {
                     try {
-                        // 1. Listen for Tasks Changes
+                        // 1. Listen for Tasks Changes with Error Handler
                         const tasksRef = SDK.collection(SDK.db, 'artifacts', SDK.appId, 'public', 'data', 'tasks');
                         SDK.onSnapshot(tasksRef, (snapshot) => {
                             const cloudTasks = [];
@@ -728,10 +728,12 @@
                                 renderSubTasksList(currentEditingTaskId);
                             }
                         }, (error) => {
+                            // Catch Firestore permission errors gracefully and fall back to local storage
+                            console.warn("Firestore access fallback to local storage:", error.message);
                             loadLocalTasks();
                         });
 
-                        // 2. Listen for Allowed Users (Whitelist) Changes Real-time
+                        // 2. Listen for Allowed Users (Whitelist) Changes Real-time with Error Handler
                         const userSettingRef = SDK.doc(SDK.db, 'artifacts', SDK.appId, 'public', 'data', 'settings', 'allowed_users');
                         SDK.onSnapshot(userSettingRef, (docSnap) => {
                             if (docSnap.exists() && docSnap.data().list) {
@@ -742,6 +744,8 @@
                                     renderAllowedUsersList();
                                 }
                             }
+                        }, (error) => {
+                            console.warn("Firestore settings fallback to local storage:", error.message);
                         });
 
                     } catch(e) { loadLocalTasks(); }
