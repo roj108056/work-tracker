@@ -541,9 +541,21 @@
             if (data) {
                 try { registeredUsers = JSON.parse(data); } catch(e) { registeredUsers = []; }
             } else {
-                // อีเมลเริ่มต้นที่ได้รับอนุญาตในระบบ
                 registeredUsers = ['admin@company.com'];
-                localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
+                saveRegisteredUsers();
+            }
+        }
+
+        function saveRegisteredUsers() {
+            localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
+
+            // Sync Allowed Users list to Cloud Database Real-time
+            const SDK = window.FirebaseSDK;
+            if (SDK && SDK.db) {
+                try {
+                    const docRef = SDK.doc(SDK.db, 'artifacts', SDK.appId, 'public', 'data', 'settings', 'allowed_users');
+                    SDK.setDoc(docRef, { list: registeredUsers });
+                } catch(e){}
             }
         }
 
@@ -585,7 +597,7 @@
             }
 
             registeredUsers.push(email);
-            localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
+            saveRegisteredUsers();
             document.getElementById('newAllowedEmail').value = '';
             renderAllowedUsersList();
             showMessage('สำเร็จ', `เพิ่มสิทธิ์ให้อีเมล ${email} เข้าใช้งานเรียบร้อยแล้ว`, 'success');
@@ -595,7 +607,7 @@
             if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการถอนสิทธิ์การเข้าใช้งานของอีเมล ${email}?`)) {
                 loadRegisteredUsers();
                 registeredUsers = registeredUsers.filter(u => u !== email);
-                localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
+                saveRegisteredUsers();
                 renderAllowedUsersList();
                 showMessage('ถอนสิทธิ์สำเร็จ', `ลบอีเมล ${email} ออกจากระบบสิทธิ์อนุญาตแล้ว`, 'info');
             }
@@ -698,6 +710,7 @@
                 const SDK = window.FirebaseSDK;
                 if (SDK && SDK.db) {
                     try {
+                        // 1. Listen for Tasks Changes
                         const tasksRef = SDK.collection(SDK.db, 'artifacts', SDK.appId, 'public', 'data', 'tasks');
                         SDK.onSnapshot(tasksRef, (snapshot) => {
                             const cloudTasks = [];
@@ -717,6 +730,20 @@
                         }, (error) => {
                             loadLocalTasks();
                         });
+
+                        // 2. Listen for Allowed Users (Whitelist) Changes Real-time
+                        const userSettingRef = SDK.doc(SDK.db, 'artifacts', SDK.appId, 'public', 'data', 'settings', 'allowed_users');
+                        SDK.onSnapshot(userSettingRef, (docSnap) => {
+                            if (docSnap.exists() && docSnap.data().list) {
+                                registeredUsers = docSnap.data().list;
+                                localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
+                                const modal = document.getElementById('manageUsersModal');
+                                if (modal && !modal.classList.contains('hidden')) {
+                                    renderAllowedUsersList();
+                                }
+                            }
+                        });
+
                     } catch(e) { loadLocalTasks(); }
                 } else { loadLocalTasks(); }
             }, 1000);
