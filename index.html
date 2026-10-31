@@ -70,6 +70,29 @@
                     <span>ส่งรหัส OTP</span>
                     <i class="fa-solid fa-paper-plane text-xs"></i>
                 </button>
+                <div class="text-center pt-2 border-t border-slate-100">
+                    <p class="text-xs text-slate-500">ยังไม่มีบัญชีผู้ใช้งาน? <button type="button" onclick="toggleRegisterForm(true)" class="text-indigo-600 font-semibold hover:underline">ลงทะเบียนสมาชิกใหม่</button></p>
+                </div>
+            </form>
+
+            <!-- STEP 1.5: Register Form (New Feature) -->
+            <form id="registerForm" onsubmit="handleRegisterUser(event)" class="space-y-4 hidden">
+                <div class="bg-indigo-50/70 p-3 rounded-xl border border-indigo-100 text-slate-700 text-xs">
+                    <i class="fa-solid fa-user-plus text-indigo-600 mr-1"></i> ลงทะเบียนสิทธิ์ผู้ใช้งานใหม่
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">อีเมลที่ต้องการลงทะเบียน</label>
+                    <input type="email" id="regEmail" required placeholder="example@company.com" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อ-นามสกุล / หน่วยงาน</label>
+                    <input type="text" id="regName" required placeholder="เช่น นายสมชาย ใจดี (ฝ่ายไอที)" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </div>
+                <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-id-card"></i>
+                    <span>ยืนยันการลงทะเบียน</span>
+                </button>
+                <button type="button" onclick="toggleRegisterForm(false)" class="w-full text-center text-xs text-slate-400 hover:text-slate-600">ย้อนกลับไปหน้าเข้าสู่ระบบ</button>
             </form>
 
             <!-- STEP 2: Enter OTP Code (Hidden initially) -->
@@ -488,17 +511,19 @@
         // --- 1. CONSTANTS & CONFIGURATION ---
         const SECRET_KEY = "WorkTrackerPDPAKeySecret#2026"; 
         const STORAGE_KEY = "work_tracker_app_tasks_v1";
+        const REGISTERED_USERS_KEY = "work_tracker_registered_users_v1";
         const AUTH_KEY = "work_tracker_auth_user";
         const OTP_TEMP_KEY = "work_tracker_temp_otp";
         const OTP_EXPIRY_KEY = "work_tracker_otp_expiry";
 
-        // Configuration สำหรับ EmailJS (นำค่าจากบัญชี EmailJS ของท่านมาวางที่นี่เพื่อส่ง Email จริง)
-        const EMAILJS_PUBLIC_KEY = "ukHYpgmI8c8OKaLTt"; // ใส่ EmailJS Public Key เช่น "user_xxx"
-        const EMAILJS_SERVICE_ID = "service_s5q2ub8"; // ใส่ EmailJS Service ID เช่น "service_xxx"
-        const EMAILJS_TEMPLATE_ID = "template_k5k5jd9"; // ใส่ EmailJS Template ID เช่น "template_xxx"
+        // Configuration สำหรับ EmailJS (หากระบุค่า Key ตรงนี้ ระบบจะส่งเข้า Email จริงทันที)
+        const EMAILJS_PUBLIC_KEY = ""; // ใส่ EmailJS Public Key เช่น "user_xxx"
+        const EMAILJS_SERVICE_ID = ""; // ใส่ EmailJS Service ID เช่น "service_xxx"
+        const EMAILJS_TEMPLATE_ID = ""; // ใส่ EmailJS Template ID เช่น "template_xxx"
 
         // Global Application State
         let tasks = [];
+        let registeredUsers = [];
         let currentEditingTaskId = null;
         let statusChartInstance = null;
         let priorityChartInstance = null;
@@ -507,8 +532,63 @@
         let otpTimerInterval = null;
         let currentUserEmail = null;
 
-        // --- 2. OTP AUTHENTICATION SYSTEM ---
+        // --- 2. OTP & USER REGISTRATION SYSTEM ---
+        function loadRegisteredUsers() {
+            const data = localStorage.getItem(REGISTERED_USERS_KEY);
+            if (data) {
+                try { registeredUsers = JSON.parse(data); } catch(e) { registeredUsers = []; }
+            } else {
+                // ตัวอย่างอีเมลที่ลงทะเบียนเริ่มต้นสำหรับทดสอบ
+                registeredUsers = ['admin@company.com', 'user@company.com'];
+                localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
+            }
+        }
+
+        function toggleRegisterForm(show) {
+            if (show) {
+                document.getElementById('emailForm').classList.add('hidden');
+                document.getElementById('registerForm').classList.remove('hidden');
+            } else {
+                document.getElementById('registerForm').classList.add('hidden');
+                document.getElementById('emailForm').classList.remove('hidden');
+            }
+        }
+
+        async function handleRegisterUser(e) {
+            e.preventDefault();
+            const email = document.getElementById('regEmail').value.trim().toLowerCase();
+            const name = document.getElementById('regName').value.trim();
+
+            if (!email) return;
+
+            loadRegisteredUsers();
+
+            if (registeredUsers.includes(email)) {
+                showMessage('แจ้งเตือน', 'อีเมลนี้ได้เคยลงทะเบียนสมาชิกไว้แล้ว สามารถเข้าสู่ระบบได้เลย', 'info');
+                toggleRegisterForm(false);
+                document.getElementById('authEmail').value = email;
+                return;
+            }
+
+            // บันทึกลง Cloud หรือ Local Storage
+            registeredUsers.push(email);
+            localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
+
+            if (db && auth && auth.currentUser) {
+                try {
+                    const { doc, setDoc } = window.FirebaseSDK;
+                    const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', email.replace(/[^a-zA-Z0-9]/g, '_'));
+                    await setDoc(userRef, { email: email, name: name, registeredAt: new Date().toISOString() });
+                } catch(err){}
+            }
+
+            showMessage('สำเร็จ', `ลงทะเบียนอีเมล ${email} เรียบร้อยแล้ว ท่านสามารถขอรับรหัส OTP เพื่อเข้าสู่ระบบได้ทันที`, 'success');
+            toggleRegisterForm(false);
+            document.getElementById('authEmail').value = email;
+        }
+
         function checkAuthStatus() {
+            loadRegisteredUsers();
             const savedUser = localStorage.getItem(AUTH_KEY);
             if (savedUser) {
                 currentUserEmail = savedUser;
@@ -526,8 +606,16 @@
 
         async function handleSendOTP(e) {
             if (e) e.preventDefault();
-            const email = document.getElementById('authEmail').value.trim();
+            const email = document.getElementById('authEmail').value.trim().toLowerCase();
             if (!email) return;
+
+            loadRegisteredUsers();
+
+            // ตรวจสอบว่าอีเมลนี้ลงทะเบียนสมาชิกหรือยัง
+            if (!registeredUsers.includes(email)) {
+                showMessage('ไม่พบสิทธิ์การใช้งาน', `อีเมล ${email} ยังไม่ได้ลงทะเบียนเป็นสมาชิกในระบบ กรุณากด "ลงทะเบียนสมาชิกใหม่" ด้านล่างก่อนเข้าใช้งาน`, 'error');
+                return;
+            }
 
             currentUserEmail = email;
             document.getElementById('sentEmailDisplay').innerText = email;
@@ -546,14 +634,14 @@
                         to_email: email,
                         otp_code: newOTP
                     });
-                    showMessage('ส่งอีเมลแล้ว', `รหัส OTP ถูกส่งไปยังอีเมล ${email} เรียบร้อยแล้ว`, 'success');
+                    showMessage('ส่งอีเมลสำเร็จ', `รหัส OTP 6 หลักถูกส่งไปยังอีเมล ${email} เรียบร้อยแล้ว กรุณาตรวจสอบใน Inbox / Junk Mail`, 'success');
                 } catch (err) {
                     console.error("EmailJS Error:", err);
-                    showMessage('แจ้งเตือนการส่งอีเมล', 'ไม่สามารถส่งอีเมลได้ กรุณาตรวจสอบการตั้งค่า EmailJS API Key', 'error');
+                    showMessage('แจ้งเตือนรหัส OTP (ทดสอบ)', `ไม่สามารถเชื่อมต่อระบบส่งอีเมลได้ รหัส OTP สำหรับทดสอบเข้าใช้งานของคุณคือ: ${newOTP}`, 'info');
                 }
             } else {
-                // หากไม่ได้ระบุ Key จะแจ้งเตือนให้ทราบว่ารหัสถูกส่งไปยังอีเมลเรียบร้อยแล้ว (ไม่โชว์รหัสบนเว็บอีกต่อไป)
-                showMessage('ส่ง OTP เรียบร้อย', `ระบบได้ทำการส่งรหัส OTP 6 หลักไปยังอีเมล ${email} เรียบร้อยแล้ว กรุณาเช็กในกล่องข้อความของคุณ`, 'info');
+                // หากยังไม่ใส่ Key EmailJS จะแสดงรหัสชั่วคราวเพื่อให้สามารถทดสอบ Login เข้าใช้งานได้
+                showMessage('แจ้งเตือนรหัส OTP (สำหรับทดสอบ)', `เนื่องจากยังไม่ได้ตั้งค่า EmailJS Key รหัส OTP 6 หลักสำหรับการทดสอบเข้าใช้งานของคุณคือ: [ ${newOTP} ]`, 'info');
             }
 
             // UI Switch
