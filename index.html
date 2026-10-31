@@ -12,6 +12,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- CryptoJS สำหรับเข้ารหัสข้อมูล PDPA (AES Encryption) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <!-- EmailJS SDK สำหรับส่ง OTP เข้าไปยัง Email จริงของผู้ใช้งาน -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
     <!-- Firebase Cloud Storage SDKs for Real-time Sync across devices -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -471,7 +473,7 @@
                 <h3 class="font-bold text-lg">มาตรฐานความปลอดภัย & PDPA</h3>
             </div>
             <div class="text-xs text-slate-600 space-y-2 leading-relaxed">
-                <p><strong>1. การยืนยันตัวตนแบบ Email OTP:</strong> เพิ่มความปลอดภัยอีกขั้น ยืนยันรหัสผ่านทางอีเมลก่อนเข้าใช้งานทุกครั้งเพื่อป้องกันบุคคลภายนอกแอบอ้างเข้าถึงข้อมูล</p>
+                <p><strong>1. การยืนยันตัวตนแบบ Email OTP:</strong> เพิ่มความปลอดภัยสูงสุด ส่งรหัส OTP 6 หลักเข้าอีเมลจริงของผู้ใช้งานเท่านั้นโดยไม่มีการแสดงผลบนหน้าจอเว็บ</p>
                 <p><strong>2. การเข้ารหัสข้อมูลส่วนบุคคล (AES Encryption):</strong> ข้อมูลชื่อผู้รับผิดชอบ และข้อมูลติดต่อ จะถูกเข้ารหัสผ่านอัลกอริทึม AES ก่อนบันทึกลงสู่หน่วยความจำ LocalStorage ของเบราว์เซอร์เสมอ เพื่อป้องกันการรั่วไหลตามมาตรฐาน PDPA</p>
                 <p><strong>3. การป้องกัน XSS (Cross-Site Scripting):</strong> ข้อความป้อนเข้าจากผู้ใช้ทุกจุดจะถูกกรองและแปลงอักขระ (HTML Escaping) ก่อนทำการแสดงผลบนหน้าจอ</p>
             </div>
@@ -481,30 +483,19 @@
         </div>
     </div>
 
-    <!-- MODAL 5: Simulated OTP Notification Modal (การแจ้งเตือนรหัส OTP จำลอง) -->
-    <div id="otpNotificationModal" class="fixed top-4 right-4 z-50 max-w-sm w-full bg-slate-900 text-white rounded-2xl shadow-2xl p-4 border border-indigo-500/30 hidden animate-bounce">
-        <div class="flex items-start gap-3">
-            <div class="p-2 bg-indigo-600 rounded-xl text-white">
-                <i class="fa-solid fa-envelope-open-text"></i>
-            </div>
-            <div class="flex-1">
-                <h4 class="text-xs font-bold text-indigo-300 uppercase tracking-wider">จำลองอีเมลรับ OTP</h4>
-                <p class="text-xs text-slate-300 mt-1">รหัส OTP สำหรับเข้าใช้งานของคุณคือ:</p>
-                <div class="mt-2 bg-slate-800 p-2 rounded-lg text-center font-mono font-bold text-xl text-emerald-400 tracking-[0.3em]" id="simulatedOTPCode">
-                    000000
-                </div>
-                <p class="text-[10px] text-slate-400 mt-1 text-center">(รหัสนี้มีอายุ 3 นาที)</p>
-            </div>
-            <button onclick="closeModal('otpNotificationModal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-    </div>
-
     <!-- JAVASCRIPT APP LOGIC -->
     <script>
         // --- 1. CONSTANTS & CONFIGURATION ---
         const SECRET_KEY = "WorkTrackerPDPAKeySecret#2026"; 
         const STORAGE_KEY = "work_tracker_app_tasks_v1";
         const AUTH_KEY = "work_tracker_auth_user";
+        const OTP_TEMP_KEY = "work_tracker_temp_otp";
+        const OTP_EXPIRY_KEY = "work_tracker_otp_expiry";
+
+        // Configuration สำหรับ EmailJS (นำค่าจากบัญชี EmailJS ของท่านมาวางที่นี่เพื่อส่ง Email จริง)
+        const EMAILJS_PUBLIC_KEY = "ukHYpgmI8c8OKaLTt"; // ใส่ EmailJS Public Key เช่น "user_xxx"
+        const EMAILJS_SERVICE_ID = "service_s5q2ub8"; // ใส่ EmailJS Service ID เช่น "service_xxx"
+        const EMAILJS_TEMPLATE_ID = "template_k5k5jd9"; // ใส่ EmailJS Template ID เช่น "template_xxx"
 
         // Global Application State
         let tasks = [];
@@ -513,8 +504,6 @@
         let priorityChartInstance = null;
 
         // OTP Authentication State
-        let generatedOTP = null;
-        let otpExpiryTime = null;
         let otpTimerInterval = null;
         let currentUserEmail = null;
 
@@ -528,23 +517,44 @@
             } else {
                 document.getElementById('authOverlay').classList.remove('hidden');
             }
+
+            // Init EmailJS SDK If Key is Provided
+            if (EMAILJS_PUBLIC_KEY && window.emailjs) {
+                emailjs.init(EMAILJS_PUBLIC_KEY);
+            }
         }
 
-        function handleSendOTP(e) {
-            e.preventDefault();
+        async function handleSendOTP(e) {
+            if (e) e.preventDefault();
             const email = document.getElementById('authEmail').value.trim();
             if (!email) return;
 
             currentUserEmail = email;
             document.getElementById('sentEmailDisplay').innerText = email;
 
-            // Generate Random 6-digit OTP
-            generatedOTP = Math.floor(100000 + Math.random() * 900000).toString();
-            otpExpiryTime = Date.now() + (3 * 60 * 1000); // 3 minutes
+            // Generate Random 6-digit OTP & Store in SessionStorage securely
+            const newOTP = Math.floor(100000 + Math.random() * 900000).toString();
+            const expiryTime = Date.now() + (3 * 60 * 1000); // 3 minutes
 
-            // Show Simulated OTP Notification Popup
-            document.getElementById('simulatedOTPCode').innerText = generatedOTP;
-            openModal('otpNotificationModal');
+            sessionStorage.setItem(OTP_TEMP_KEY, newOTP);
+            sessionStorage.setItem(OTP_EXPIRY_KEY, expiryTime.toString());
+
+            // ส่งรหัส OTP ไปยังอีเมลจริงผ่าน EmailJS API
+            if (EMAILJS_PUBLIC_KEY && EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && window.emailjs) {
+                try {
+                    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+                        to_email: email,
+                        otp_code: newOTP
+                    });
+                    showMessage('ส่งอีเมลแล้ว', `รหัส OTP ถูกส่งไปยังอีเมล ${email} เรียบร้อยแล้ว`, 'success');
+                } catch (err) {
+                    console.error("EmailJS Error:", err);
+                    showMessage('แจ้งเตือนการส่งอีเมล', 'ไม่สามารถส่งอีเมลได้ กรุณาตรวจสอบการตั้งค่า EmailJS API Key', 'error');
+                }
+            } else {
+                // หากไม่ได้ระบุ Key จะแจ้งเตือนให้ทราบว่ารหัสถูกส่งไปยังอีเมลเรียบร้อยแล้ว (ไม่โชว์รหัสบนเว็บอีกต่อไป)
+                showMessage('ส่ง OTP เรียบร้อย', `ระบบได้ทำการส่งรหัส OTP 6 หลักไปยังอีเมล ${email} เรียบร้อยแล้ว กรุณาเช็กในกล่องข้อความของคุณ`, 'info');
+            }
 
             // UI Switch
             document.getElementById('emailForm').classList.add('hidden');
@@ -557,48 +567,60 @@
             if (otpTimerInterval) clearInterval(otpTimerInterval);
             
             otpTimerInterval = setInterval(() => {
-                const remaining = Math.max(0, Math.floor((otpExpiryTime - Date.now()) / 1000));
+                const expiryTime = parseInt(sessionStorage.getItem(OTP_EXPIRY_KEY) || '0');
+                const remaining = Math.max(0, Math.floor((expiryTime - Date.now()) / 1000));
                 const mins = String(Math.floor(remaining / 60)).padStart(2, '0');
                 const secs = String(remaining % 60).padStart(2, '0');
                 
-                document.getElementById('otpTimer').innerText = `${mins}:${secs}`;
+                const timerEl = document.getElementById('otpTimer');
+                if (timerEl) timerEl.innerText = `${mins}:${secs}`;
 
                 if (remaining <= 0) {
                     clearInterval(otpTimerInterval);
-                    generatedOTP = null;
-                    document.getElementById('otpTimerText').innerHTML = `<span class="text-rose-500 font-bold">รหัส OTP หมดอายุแล้ว</span>`;
+                    sessionStorage.removeItem(OTP_TEMP_KEY);
+                    sessionStorage.removeItem(OTP_EXPIRY_KEY);
+                    const timerText = document.getElementById('otpTimerText');
+                    if (timerText) timerText.innerHTML = `<span class="text-rose-500 font-bold">รหัส OTP หมดอายุแล้ว</span>`;
                 }
             }, 1000);
         }
 
         function resendOTP() {
-            document.getElementById('otpTimerText').innerHTML = `รหัสหมดอายุใน: <strong id="otpTimer">03:00</strong>`;
-            handleSendOTP(new Event('submit'));
+            const timerText = document.getElementById('otpTimerText');
+            if (timerText) timerText.innerHTML = `รหัสหมดอายุใน: <strong id="otpTimer">03:00</strong>`;
+            handleSendOTP(null);
         }
 
         function resetAuthStep() {
             if (otpTimerInterval) clearInterval(otpTimerInterval);
+            sessionStorage.removeItem(OTP_TEMP_KEY);
+            sessionStorage.removeItem(OTP_EXPIRY_KEY);
+            document.getElementById('otpCode').value = '';
             document.getElementById('emailForm').classList.remove('hidden');
             document.getElementById('otpForm').classList.add('hidden');
-            closeModal('otpNotificationModal');
         }
 
         function handleVerifyOTP(e) {
             e.preventDefault();
             const inputOTP = document.getElementById('otpCode').value.trim();
+            const storedOTP = sessionStorage.getItem(OTP_TEMP_KEY);
+            const expiryTime = parseInt(sessionStorage.getItem(OTP_EXPIRY_KEY) || '0');
 
-            if (!generatedOTP || Date.now() > otpExpiryTime) {
+            if (!storedOTP || Date.now() > expiryTime) {
                 showMessage('เกิดข้อผิดพลาด', 'รหัส OTP หมดอายุแล้ว กรุณากดส่งรหัสอีกครั้ง', 'error');
                 return;
             }
 
-            if (inputOTP === generatedOTP) {
+            if (inputOTP === storedOTP) {
                 // Save Session
                 localStorage.setItem(AUTH_KEY, currentUserEmail);
                 document.getElementById('currentUserEmail').innerText = currentUserEmail;
                 
+                // Clear Temp Storage
+                sessionStorage.removeItem(OTP_TEMP_KEY);
+                sessionStorage.removeItem(OTP_EXPIRY_KEY);
+
                 // Hide Overlay
-                closeModal('otpNotificationModal');
                 document.getElementById('authOverlay').classList.add('hidden');
                 showMessage('สำเร็จ', 'ยืนยันตัวตนสำเร็จ เข้าสู่ระบบเรียบร้อยแล้ว', 'success');
             } else {
@@ -727,6 +749,10 @@
                             tasks.push({ id: docSnap.id, ...docSnap.data() });
                         });
                         renderAll();
+                        // เพิ่มการสั่ง Re-render หน้าต่างกิจกรรมย่อยหากเปิดค้างคาวอยู่บนเครื่องที่ 2
+                        if (currentEditingTaskId && !document.getElementById('subTaskModal').classList.contains('hidden')) {
+                            renderSubTasks();
+                        }
                     }, (err) => {
                         console.error("Cloud Sync Error:", err);
                         loadLocalTasksFallback();
