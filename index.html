@@ -112,7 +112,14 @@
                     <i class="fa-solid fa-lock-open"></i>
                     <span>ยืนยันเข้าสู่ระบบ</span>
                 </button>
-                <button type="button" onclick="resetAuthStep()" class="w-full text-center text-xs text-slate-400 hover:text-slate-600">เปลี่ยนอีเมลผู้ใช้งาน</button>
+                
+                <!-- Added Backup OTP Button -->
+                <button type="button" onclick="showBackupOTP()" class="w-full py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-key"></i>
+                    <span>ไม่ได้รับอีเมล? ดูรหัส OTP สำรอง</span>
+                </button>
+
+                <button type="button" onclick="resetAuthStep()" class="w-full text-center text-xs text-slate-400 hover:text-slate-600 pt-1">เปลี่ยนอีเมลผู้ใช้งาน</button>
             </form>
         </div>
     </div>
@@ -630,14 +637,25 @@
             // ส่งรหัส OTP ไปยังอีเมลจริงผ่าน EmailJS API
             if (EMAILJS_PUBLIC_KEY && EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && window.emailjs) {
                 try {
-                    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+                    // ส่งค่าแบบ Param Standard ที่ตรงกับ EmailJS Template
+                    const templateParams = {
                         to_email: email,
-                        otp_code: newOTP
-                    });
-                    showMessage('ส่งอีเมลสำเร็จ', `รหัส OTP 6 หลักถูกส่งไปยังอีเมล ${email} เรียบร้อยแล้ว กรุณาตรวจสอบใน Inbox / Junk Mail`, 'success');
+                        email: email,
+                        user_email: email,
+                        otp_code: newOTP,
+                        code: newOTP,
+                        message: `รหัส OTP สำหรับเข้าสู่ระบบ Work Tracker คือ: ${newOTP}`
+                    };
+
+                    const response = await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams);
+                    console.log("EmailJS Success Response:", response);
+                    showMessage('ส่งอีเมลสำเร็จ', `รหัส OTP 6 หลักถูกส่งไปยังอีเมล ${email} เรียบร้อยแล้ว (กรุณาตรวจสอบใน Inbox และ Junk Mail / สแปม)`, 'success');
                 } catch (err) {
-                    console.error("EmailJS Error:", err);
-                    showMessage('แจ้งเตือนรหัส OTP (ทดสอบ)', `ไม่สามารถเชื่อมต่อระบบส่งอีเมลได้ รหัส OTP สำหรับทดสอบเข้าใช้งานของคุณคือ: ${newOTP}`, 'info');
+                    console.error("EmailJS Detailed Error:", err);
+                    const errorMsg = err && err.text ? err.text : (err.message || JSON.stringify(err));
+                    
+                    // แจ้งเตือนข้อผิดพลาดที่เกิดขึ้นจริงจาก EmailJS พร้อมให้ OTP สำรอง
+                    showMessage('EmailJS ตอบกลับข้อผิดพลาด', `ระบบส่งอีเมลขัดข้อง: [ ${errorMsg} ] \n\nรหัส OTP สำรองสำหรับการเข้าใช้งานของคุณคือ: [ ${newOTP} ]`, 'error');
                 }
             } else {
                 // หากยังไม่ใส่ Key EmailJS จะแสดงรหัสชั่วคราวเพื่อให้สามารถทดสอบ Login เข้าใช้งานได้
@@ -677,6 +695,17 @@
             const timerText = document.getElementById('otpTimerText');
             if (timerText) timerText.innerHTML = `รหัสหมดอายุใน: <strong id="otpTimer">03:00</strong>`;
             handleSendOTP(null);
+        }
+
+        // Added Show Backup OTP Function
+        function showBackupOTP() {
+            const storedOTP = sessionStorage.getItem(OTP_TEMP_KEY);
+            if (storedOTP) {
+                document.getElementById('otpCode').value = storedOTP;
+                showMessage('รหัส OTP สำรอง', `รหัส OTP สำหรับเข้าสู่ระบบของคุณคือ: [ ${storedOTP} ] (ระบบเติมให้อัตโนมัติแล้ว สามารถกดปุ่มยืนยันได้เลย)`, 'info');
+            } else {
+                showMessage('แจ้งเตือน', 'รหัส OTP หมดอายุแล้ว กรุณากดส่งรหัสใหม่อีกครั้ง', 'error');
+            }
         }
 
         function resetAuthStep() {
