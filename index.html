@@ -530,7 +530,7 @@
         }
 
         // --- 2. AUTH & USER MANAGEMENT SYSTEM ---
-        function loadRegisteredUsers() {
+        async function loadRegisteredUsers() {
             const data = localStorage.getItem(REGISTERED_USERS_KEY);
             if (data) {
                 try { registeredUsers = JSON.parse(data); } catch(e) { registeredUsers = []; }
@@ -538,6 +538,19 @@
                 const defaultEmail = window.DEFAULT_ADMIN_EMAIL || 'admin@company.com';
                 registeredUsers = [defaultEmail];
                 saveRegisteredUsers();
+            }
+
+            // Sync Latest Allowed Users from Firebase Cloud if available
+            const SDK = window.FirebaseSDK;
+            if (SDK && SDK.db) {
+                try {
+                    const docRef = SDK.doc(SDK.db, 'artifacts', SDK.appId, 'public', 'data', 'settings', 'allowed_users');
+                    const snapshot = await SDK.getDoc(docRef);
+                    if (snapshot.exists() && snapshot.data().list) {
+                        registeredUsers = snapshot.data().list;
+                        localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
+                    }
+                } catch(e){}
             }
         }
 
@@ -624,7 +637,8 @@
             const email = document.getElementById('authEmail').value.trim().toLowerCase();
             if (!email) return;
 
-            loadRegisteredUsers();
+            // Fetch fresh Whitelist Users from Cloud Database before verifying
+            await loadRegisteredUsers();
 
             // Strict Check: เฉพาะอีเมลที่มีรายชื่อใน White-list เท่านั้นที่จะขอรับ OTP ได้
             if (!registeredUsers.includes(email)) {
