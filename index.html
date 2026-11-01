@@ -20,6 +20,9 @@
     <!-- CryptoJS for PDPA Encryption (AES-256) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 
+    <!-- External Configuration File (โหลดค่าตั้งค่า EmailJS & Firebase) -->
+    <script src="config.js"></script>
+
     <!-- EmailJS SDK for Real Email OTP -->
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 
@@ -467,9 +470,9 @@
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Firebase Configuration setup
+        // Read Firebase Configuration from external config.js
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'work-tracker-app';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+        const firebaseConfig = window.FIREBASE_CONFIG || {
             apiKey: "demo-key",
             authDomain: "demo.firebaseapp.com",
             projectId: "demo-project"
@@ -489,18 +492,9 @@
     </script>
 
     <script>
-        // --- CONFIGURATION & KEYS ---
+        // --- CONFIGURATION & KEYS READ FROM CONFIG.JS ---
         const SECRET_PDPA_KEY = "PDPA-SECURE-KEY-WORK-TRACKER-2026";
         const REGISTERED_USERS_KEY = "work_tracker_registered_users_v1";
-        
-        // Configuration สำหรับ EmailJS (หากระบุค่า Key ตรงนี้ ระบบจะส่งเข้า Email จริงทันที)
-        const EMAILJS_PUBLIC_KEY = "ukHYpgmI8c8OKaLTt"; // ใส่ EmailJS Public Key เช่น "user_xxx"
-        const EMAILJS_SERVICE_ID = "service_s5q2ub8"; // ใส่ EmailJS Service ID เช่น "service_xxx"
-        const EMAILJS_TEMPLATE_ID = "template_k5k5jd9"; // ใส่ EmailJS Template ID เช่น "template_xxx"
-
-        if (EMAILJS_PUBLIC_KEY) {
-            try { emailjs.init(EMAILJS_PUBLIC_KEY); } catch(e){}
-        }
 
         // Global State Variables
         let tasks = [];
@@ -541,7 +535,8 @@
             if (data) {
                 try { registeredUsers = JSON.parse(data); } catch(e) { registeredUsers = []; }
             } else {
-                registeredUsers = ['อีเมลจริงของท่าน@company.com'];
+                const defaultEmail = window.DEFAULT_ADMIN_EMAIL || 'admin@company.com';
+                registeredUsers = [defaultEmail];
                 saveRegisteredUsers();
             }
         }
@@ -644,15 +639,22 @@
             generatedOTP = Math.floor(100000 + Math.random() * 900000).toString();
             sessionStorage.setItem('temp_otp', generatedOTP);
 
-            if (EMAILJS_PUBLIC_KEY && EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID) {
+            // Read Fresh Config Keys from window.EMAIL_CONFIG
+            const emailPublicKey = window.EMAIL_CONFIG?.PUBLIC_KEY || "";
+            const emailServiceID = window.EMAIL_CONFIG?.SERVICE_ID || "";
+            const emailTemplateID = window.EMAIL_CONFIG?.TEMPLATE_ID || "";
+
+            if (emailPublicKey && emailServiceID && emailTemplateID) {
                 try {
-                    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+                    emailjs.init(emailPublicKey);
+                    await emailjs.send(emailServiceID, emailTemplateID, {
                         to_email: email,
                         otp_code: generatedOTP
                     });
                     showMessage('ส่งสำเร็จ', `รหัส OTP ถูกส่งไปยังอีเมล ${email} แล้ว`, 'success');
                 } catch (err) {
-                    showMessage('EmailJS Error', `ส่งอีเมลไม่สำเร็จ: ${err.text || err.message}`, 'error');
+                    console.error("EmailJS Error details:", err);
+                    showMessage('EmailJS Error', `ส่งอีเมลไม่สำเร็จ: ${err.text || err.message || 'โปรดตรวจสอบ Key ใน config.js'}`, 'error');
                 }
             } else {
                 document.getElementById('backupOtpCodeDisplay').innerText = generatedOTP;
