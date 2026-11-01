@@ -109,10 +109,10 @@
             <!-- System Version & Build Timestamp Display -->
             <div class="mt-4 pt-3 border-t border-slate-100 text-center space-y-0.5">
                 <p class="text-[11px] font-medium text-slate-500">
-                    <i class="fa-solid fa-code-branch text-indigo-500 mr-1"></i>Version: <span class="text-indigo-600 font-semibold">1.0.6</span>
+                    <i class="fa-solid fa-code-branch text-indigo-500 mr-1"></i>Version: <span class="text-indigo-600 font-semibold">1.1.0</span>
                 </p>
                 <p class="text-[10px] text-slate-400">
-                    <i class="fa-regular fa-clock mr-1"></i>Updated: <span id="buildTimestamp">01/11/2026 12:19:00</span>
+                    <i class="fa-regular fa-clock mr-1"></i>Updated: <span id="buildTimestamp">01/11/2026 12:32:00</span>
                 </p>
             </div>
         </div>
@@ -342,47 +342,52 @@
 
     <!-- MODAL 2: กิจกรรมย่อย / Sub-tasks Modal -->
     <div id="subTaskModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
-        <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="bg-white rounded-2xl shadow-xl max-w-3xl w-full overflow-hidden flex flex-col max-h-[90vh]">
             <div class="px-6 py-4 bg-slate-900 text-white flex justify-between items-center">
                 <div>
-                    <h3 class="font-semibold text-base">จัดการกิจกรรมย่อย & ความคืบหน้า</h3>
+                    <h3 class="font-semibold text-base flex items-center gap-2">
+                        <i class="fa-solid fa-sitemap text-indigo-400"></i> จัดการกิจกรรมหลัก & สิ่งที่ต้องทำย่อย (3-Tier Level)
+                    </h3>
                     <p id="subTaskParentTitle" class="text-xs text-indigo-300 font-normal mt-0.5">-</p>
                 </div>
                 <button onclick="closeModal('subTaskModal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
             </div>
             
             <div class="p-6 space-y-4 overflow-y-auto custom-scrollbar flex-1">
-                <!-- Add Sub-task Form -->
-                <form id="subTaskForm" onsubmit="handleAddSubTask(event)" class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                <!-- Add Major Activity (Level 2) Form -->
+                <form id="subTaskForm" onsubmit="handleAddSubTask(event)" class="bg-indigo-50/60 p-4 rounded-xl border border-indigo-100 space-y-3">
+                    <h4 class="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                        <i class="fa-solid fa-folder-plus text-indigo-600"></i> เพิ่มเฟส / กิจกรรมหลัก (Level 2)
+                    </h4>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <input type="text" id="subTaskTitle" required placeholder="ชื่อกิจกรรมย่อย..." class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none">
-                        <input type="text" id="subTaskAssignee" placeholder="ผู้รับผิดชอบกิจกรรม..." class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none">
+                        <input type="text" id="subTaskTitle" required placeholder="เช่น 1.1 เก็บรายละเอียดความต้องการลูกค้า" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                        <input type="text" id="subTaskAssignee" placeholder="ผู้รับผิดชอบหลักกิจกรรม..." class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <input type="text" id="subTaskDepartment" placeholder="หน่วยงาน/แผนก..." class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none">
+                        <input type="text" id="subTaskDepartment" placeholder="หน่วยงาน / ทีม..." class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                         <div>
-                            <label class="block text-[10px] text-slate-400">วันเริ่ม</label>
-                            <input type="date" id="subTaskStartDate" class="w-full px-2 py-1 border border-slate-200 rounded-lg text-xs">
+                            <label class="block text-[10px] text-slate-500">วันเริ่มกิจกรรม</label>
+                            <input type="date" id="subTaskStartDate" class="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs">
                         </div>
                         <div>
-                            <label class="block text-[10px] text-slate-400">วันสิ้นสุด</label>
-                            <input type="date" id="subTaskEndDate" class="w-full px-2 py-1 border border-slate-200 rounded-lg text-xs">
+                            <label class="block text-[10px] text-slate-500">กำหนดเสร็จกิจกรรม</label>
+                            <input type="date" id="subTaskEndDate" class="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs">
                         </div>
                     </div>
                     <div>
-                        <label class="block text-[10px] text-slate-500 mb-1">แนบเอกสารประกอบ (PDF, Word, Image)</label>
-                        <input type="file" id="subTaskFile" class="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                        <label class="block text-[10px] text-slate-500 mb-1">แนบเอกสารประกอบกิจกรรม (PDF, Word, Image)</label>
+                        <input type="file" id="subTaskFile" class="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200">
                     </div>
                     <button type="submit" class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-sm flex items-center justify-center gap-1">
-                        <i class="fa-solid fa-plus"></i> เพิ่มกิจกรรมย่อย
+                        <i class="fa-solid fa-plus"></i> บันทึกเพิ่มกิจกรรมหลัก
                     </button>
                 </form>
 
-                <!-- Sub-tasks List -->
-                <div class="space-y-2">
-                    <h4 class="text-xs font-bold text-slate-500">รายการกิจกรรมย่อยทั้งหมด</h4>
-                    <div id="subTasksList" class="space-y-2">
-                        <!-- Sub-task items dynamically rendered -->
+                <!-- Activities List & Nested Action Items -->
+                <div class="space-y-3">
+                    <h4 class="text-xs font-bold text-slate-600">รายการกิจกรรมหลัก & สิ่งที่ต้องทำย่อย</h4>
+                    <div id="subTasksList" class="space-y-3">
+                        <!-- Rendered Level 2 Activities & Level 3 Actions -->
                     </div>
                 </div>
             </div>
@@ -972,38 +977,87 @@
             const subTasks = task.subTasks || [];
 
             if (subTasks.length === 0) {
-                container.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">ยังไม่มีกิจกรรมย่อย</p>`;
+                container.innerHTML = `<p class="text-xs text-slate-400 text-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200">ยังไม่มีกิจกรรมหลักในโครงการนี้</p>`;
                 return;
             }
 
             const today = new Date().toISOString().split('T')[0];
 
-            container.innerHTML = subTasks.map(st => {
-                const isOverdue = st.endDate && st.endDate < today && !st.completed && st.status !== 'CANCELLED';
+            container.innerHTML = subTasks.map((st, idx) => {
+                const isOverdue = st.endDate && st.endDate < today && !st.completed;
                 const decryptedAssignee = decryptPDPA(st.assignee);
+                const actionItems = st.actionItems || [];
+                const completedActions = actionItems.filter(a => a.completed).length;
+                const subProgress = actionItems.length > 0 ? Math.round((completedActions / actionItems.length) * 100) : (st.completed ? 100 : 0);
 
                 return `
-                    <div class="p-3 bg-white border ${isOverdue ? 'border-rose-300 bg-rose-50/50' : 'border-slate-200'} rounded-xl space-y-2 text-xs">
-                        <div class="flex items-start justify-between gap-2">
+                    <div class="p-4 bg-white border ${isOverdue ? 'border-rose-300 bg-rose-50/30' : 'border-slate-200'} rounded-2xl space-y-3 text-xs shadow-sm">
+                        <!-- Level 2: Activity Header -->
+                        <div class="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
                             <div class="flex items-center gap-2 flex-1">
                                 <input type="checkbox" ${st.completed ? 'checked' : ''} onchange="toggleSubTaskComplete('${taskId}', '${st.id}')" class="w-4 h-4 text-indigo-600 rounded">
-                                <span class="${st.completed ? 'line-through text-slate-400' : 'font-semibold text-slate-700'}">${escapeHTML(st.title)}</span>
-                                ${isOverdue ? `<span class="px-2 py-0.5 bg-rose-100 text-rose-600 rounded-full text-[10px] font-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>เกินกำหนดส่ง!</span>` : ''}
+                                <span class="${st.completed ? 'line-through text-slate-400 font-medium' : 'font-bold text-slate-800 text-sm'}">${escapeHTML(st.title)}</span>
+                                ${isOverdue ? `<span class="px-2 py-0.5 bg-rose-100 text-rose-600 rounded-full text-[10px] font-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>เกินกำหนด!</span>` : ''}
                             </div>
-                            <div class="flex items-center gap-1">
-                                <button onclick="deleteSubTask('${taskId}', '${st.id}')" class="text-slate-400 hover:text-rose-600 p-1"><i class="fa-solid fa-trash-can"></i></button>
-                            </div>
+                            <button onclick="deleteSubTask('${taskId}', '${st.id}')" class="text-slate-400 hover:text-rose-600 p-1" title="ลบกิจกรรมนี้"><i class="fa-solid fa-trash-can"></i></button>
                         </div>
 
-                        <div class="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 pt-1 border-t border-slate-100">
-                            <span><i class="fa-solid fa-user text-indigo-400 mr-1"></i>${escapeHTML(decryptedAssignee || 'ไม่ระบุ')}</span>
+                        <!-- Info & Meta Data -->
+                        <div class="flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
+                            <span><i class="fa-solid fa-user text-indigo-500 mr-1"></i>ผู้รับผิดชอบ: <b>${escapeHTML(decryptedAssignee || 'ไม่ระบุ')}</b></span>
                             <span><i class="fa-solid fa-building text-slate-400 mr-1"></i>${escapeHTML(st.department || '-')}</span>
                             <span><i class="fa-regular fa-calendar-days text-slate-400 mr-1"></i>${st.startDate || '-'} ถึง ${st.endDate || '-'}</span>
                             ${st.fileName ? `
-                                <a href="${st.fileData}" download="${st.fileName}" class="text-indigo-600 hover:underline flex items-center gap-1 font-medium">
+                                <a href="${st.fileData}" download="${st.fileName}" class="text-indigo-600 hover:underline font-semibold flex items-center gap-1">
                                     <i class="fa-solid fa-paperclip"></i> ${escapeHTML(st.fileName)}
                                 </a>
                             ` : ''}
+                        </div>
+
+                        <!-- Activity Progress Bar -->
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-[10px] font-medium text-slate-500">
+                                <span>ความคืบหน้ากิจกรรม (${completedActions}/${actionItems.length} สิ่งที่ต้องทำ)</span>
+                                <span class="text-indigo-600 font-bold">${subProgress}%</span>
+                            </div>
+                            <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                <div class="bg-indigo-600 h-1.5 rounded-full transition-all duration-300" style="width: ${subProgress}%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Level 3: Nested Action Checklist Items -->
+                        <div class="bg-slate-50/80 p-3 rounded-xl border border-slate-100 space-y-2 mt-2">
+                            <h5 class="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                                <i class="fa-solid fa-list-check text-indigo-500"></i> สิ่งที่ต้องดำเนินการย่อย (Level 3 Checklist)
+                            </h5>
+
+                            <!-- Render Actions -->
+                            <div class="space-y-1.5">
+                                ${actionItems.map(act => {
+                                    const decActAssignee = decryptPDPA(act.assignee);
+                                    return `
+                                        <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200 text-xs">
+                                            <div class="flex items-center gap-2 flex-1">
+                                                <input type="checkbox" ${act.completed ? 'checked' : ''} onchange="toggleActionItem('${taskId}', '${st.id}', '${act.id}')" class="w-3.5 h-3.5 text-emerald-600 rounded">
+                                                <span class="${act.completed ? 'line-through text-slate-400' : 'text-slate-700 font-medium'}">${escapeHTML(act.title)}</span>
+                                            </div>
+                                            <div class="flex items-center gap-2 text-[10px] text-slate-400">
+                                                <span><i class="fa-regular fa-user mr-0.5"></i>${escapeHTML(decActAssignee || '-')}</span>
+                                                ${act.dueDate ? `<span><i class="fa-regular fa-clock mr-0.5"></i>${act.dueDate}</span>` : ''}
+                                                <button onclick="deleteActionItem('${taskId}', '${st.id}', '${act.id}')" class="text-slate-300 hover:text-rose-500"><i class="fa-solid fa-xmark"></i></button>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+
+                            <!-- Add Level 3 Action Form Inline -->
+                            <form onsubmit="handleAddActionItem(event, '${taskId}', '${st.id}')" class="flex flex-col sm:flex-row gap-1.5 pt-1">
+                                <input type="text" id="actTitle_${st.id}" required placeholder="เพิ่มสิ่งที่ต้องทำย่อย..." class="flex-1 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none">
+                                <input type="text" id="actAssignee_${st.id}" placeholder="ผู้ปฏิบัติงาน..." class="w-full sm:w-28 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none">
+                                <input type="date" id="actDueDate_${st.id}" class="px-2 py-1.5 border border-slate-200 rounded-lg text-xs">
+                                <button type="submit" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold shrink-0">+ เพิ่ม</button>
+                            </form>
                         </div>
                     </div>
                 `;
@@ -1046,91 +1100,85 @@
                 endDate,
                 fileName,
                 fileData,
-                completed: false
+                completed: false,
+                actionItems: []
             };
 
             if (!task.subTasks) task.subTasks = [];
             task.subTasks.push(newSubTask);
 
-            addAuditLog(task, 'เพิ่มกิจกรรมย่อย', `เพิ่มกิจกรรม: "${title}" โดย ${rawAssignee || '-'}`);
+            addAuditLog(task, 'เพิ่มกิจกรรมหลัก', `เพิ่มกิจกรรม: "${title}" โดย ${rawAssignee || '-'}`);
             saveTasks();
             
             document.getElementById('subTaskForm').reset();
             renderSubTasksList(currentEditingTaskId);
-            showMessage('สำเร็จ', 'เพิ่มกิจกรรมย่อยเรียบร้อยแล้ว', 'success');
+            showMessage('สำเร็จ', 'เพิ่มกิจกรรมหลักเรียบร้อยแล้ว', 'success');
         }
 
-        function toggleSubTaskComplete(taskId, subTaskId) {
+        function handleAddActionItem(e, taskId, subTaskId) {
+            e.preventDefault();
             const task = tasks.find(t => t.id === taskId);
             if (!task) return;
 
             const st = task.subTasks.find(s => s.id === subTaskId);
-            if (st) {
-                st.completed = !st.completed;
-                addAuditLog(task, 'อัปเดตกิจกรรมย่อย', `เปลี่ยนสถานะกิจกรรม "${st.title}" เป็น ${st.completed ? 'เสร็จสิ้น' : 'รอดำเนินการ'}`);
+            if (!st) return;
+
+            const titleEl = document.getElementById(`actTitle_${subTaskId}`);
+            const assigneeEl = document.getElementById(`actAssignee_${subTaskId}`);
+            const dueDateEl = document.getElementById(`actDueDate_${subTaskId}`);
+
+            const title = titleEl.value.trim();
+            if (!title) return;
+
+            if (!st.actionItems) st.actionItems = [];
+            st.actionItems.push({
+                id: 'act_' + Date.now(),
+                title: title,
+                assignee: encryptPDPA(assigneeEl.value.trim()),
+                dueDate: dueDateEl.value,
+                completed: false
+            });
+
+            saveTasks();
+            renderSubTasksList(taskId);
+        }
+
+        function toggleActionItem(taskId, subTaskId, actionId) {
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return;
+
+            const st = task.subTasks.find(s => s.id === subTaskId);
+            if (!st) return;
+
+            const act = st.actionItems.find(a => a.id === actionId);
+            if (act) {
+                act.completed = !act.completed;
+                
+                // ถ้ารายการย่อยทั้งหมดเสร็จแล้ว ให้ปรับสถานะกิจกรรมหลักเป็นเสร็จอัตโนมัติ
+                if (st.actionItems.every(a => a.completed)) {
+                    st.completed = true;
+                } else {
+                    st.completed = false;
+                }
+
                 saveTasks();
                 renderSubTasksList(taskId);
             }
         }
 
-        function deleteSubTask(taskId, subTaskId) {
+        function deleteActionItem(taskId, subTaskId, actionId) {
             const task = tasks.find(t => t.id === taskId);
             if (!task) return;
 
-            task.subTasks = task.subTasks.filter(s => s.id !== subTaskId);
-            saveTasks();
-            renderSubTasksList(taskId);
+            const st = task.subTasks.find(s => s.id === subTaskId);
+            if (st) {
+                st.actionItems = st.actionItems.filter(a => a.id !== actionId);
+                saveTasks();
+                renderSubTasksList(taskId);
+            }
         }
 
-        // --- 6. DASHBOARD & RENDER ENGINE ---
-        function renderDashboard() {
-            const total = tasks.length;
-            const pending = tasks.filter(t => t.status === 'PENDING').length;
-            const inProgress = tasks.filter(t => t.status === 'IN_PROGRESS').length;
-            const completed = tasks.filter(t => t.status === 'COMPLETED').length;
-            const cancelled = tasks.filter(t => t.status === 'CANCELLED').length;
-
-            document.getElementById('statTotal').innerText = total;
-            document.getElementById('statPending').innerText = pending;
-            document.getElementById('statInProgress').innerText = inProgress;
-            document.getElementById('statCompleted').innerText = completed;
-            document.getElementById('statCancelled').innerText = cancelled;
-
-            // Render Charts
-            const ctxStatus = document.getElementById('statusChart').getContext('2d');
-            if (statusChartInstance) statusChartInstance.destroy();
-            statusChartInstance = new Chart(ctxStatus, {
-                type: 'doughnut',
-                data: {
-                    labels: ['รอดำเนินการ', 'กำลังดำเนินการ', 'เสร็จสิ้นแล้ว', 'ยกเลิก'],
-                    datasets: [{
-                        data: [pending, inProgress, completed, cancelled],
-                        backgroundColor: ['#f59e0b', '#3b82f6', '#10b981', '#ef4444']
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: false }
-            });
-
-            const lowP = tasks.filter(t => t.priority === 'LOW').length;
-            const medP = tasks.filter(t => t.priority === 'MEDIUM').length;
-            const highP = tasks.filter(t => t.priority === 'HIGH').length;
-
-            const ctxPriority = document.getElementById('priorityChart').getContext('2d');
-            if (priorityChartInstance) priorityChartInstance.destroy();
-            priorityChartInstance = new Chart(ctxPriority, {
-                type: 'bar',
-                data: {
-                    labels: ['ต่ำ', 'ปานกลาง', 'สูง'],
-                    datasets: [{
-                        label: 'จำนวนงาน',
-                        data: [lowP, medP, highP],
-                        backgroundColor: ['#94a3b8', '#6366f1', '#f43f5e']
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: false }
-            });
-        }
-
+        // --- Calculate Progress based on Nested Actions & Activities ---
         function renderTasks() {
             const container = document.getElementById('tasksContainer');
             const search = document.getElementById('searchInput').value.toLowerCase();
@@ -1158,8 +1206,23 @@
             container.innerHTML = filtered.map(t => {
                 const decAssignee = decryptPDPA(t.assignee);
                 const subTasks = t.subTasks || [];
-                const completedSubCount = subTasks.filter(s => s.completed).length;
-                const progress = subTasks.length > 0 ? Math.round((completedSubCount / subTasks.length) * 100) : (t.status === 'COMPLETED' ? 100 : 0);
+                
+                // Calculate Total Overall Progress across 3 levels
+                let totalActions = 0;
+                let completedActions = 0;
+
+                subTasks.forEach(st => {
+                    const actions = st.actionItems || [];
+                    if (actions.length > 0) {
+                        totalActions += actions.length;
+                        completedActions += actions.filter(a => a.completed).length;
+                    } else {
+                        totalActions += 1;
+                        if (st.completed) completedActions += 1;
+                    }
+                });
+
+                const progress = totalActions > 0 ? Math.round((completedActions / totalActions) * 100) : (t.status === 'COMPLETED' ? 100 : 0);
 
                 const priorityBadge = {
                     'HIGH': '<span class="px-2 py-0.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-md text-[10px] font-bold">สูง</span>',
@@ -1187,8 +1250,8 @@
                         <!-- Progress Bar -->
                         <div class="space-y-1">
                             <div class="flex justify-between text-[11px] font-medium">
-                                <span class="text-slate-500">ความคืบหน้า</span>
-                                <span class="text-indigo-600">${progress}%</span>
+                                <span class="text-slate-500">ความคืบหน้ารวม</span>
+                                <span class="text-indigo-600 font-bold">${progress}%</span>
                             </div>
                             <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                                 <div class="bg-indigo-600 h-1.5 rounded-full transition-all duration-300" style="width: ${progress}%"></div>
@@ -1205,7 +1268,7 @@
 
                         <div class="flex items-center justify-between pt-2 gap-1 border-t border-slate-50">
                             <button onclick="openSubTaskModal('${t.id}')" class="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-medium transition flex items-center gap-1">
-                                <i class="fa-solid fa-list-check"></i> กิจกรรม (${completedSubCount}/${subTasks.length})
+                                <i class="fa-solid fa-sitemap"></i> กิจกรรม (${subTasks.length} เฟส)
                             </button>
                             <div class="flex items-center gap-1">
                                 <button onclick="openAuditLogModal('${t.id}')" class="p-1.5 text-slate-400 hover:text-amber-600 rounded-lg transition" title="ดูประวัติแก้ไข"><i class="fa-solid fa-clock-rotate-left"></i></button>
