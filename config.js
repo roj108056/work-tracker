@@ -26,4 +26,4 @@ window.FIREBASE_CONFIG = {
 };
 
 // 3. INITIAL ADMIN EMAIL (อีเมลผู้ดูแลระบบเริ่มต้นสำหรับล็อกอินครั้งแรก)
-window.DEFAULT_ADMIN_EMAIL = "roj.108056@company.com";
+window.DEFAULT_ADMIN_EMAIL = "roj.108056@gmail.com";
