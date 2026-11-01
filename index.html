@@ -533,7 +533,7 @@
         async function loadRegisteredUsers() {
             const defaultAdmin = (window.DEFAULT_ADMIN_EMAIL || 'admin@company.com').toLowerCase();
             
-            // อ่านค่าเดิมจาก LocalStorage
+            // 1. อ่านค่าเดิมจาก LocalStorage
             const data = localStorage.getItem(REGISTERED_USERS_KEY);
             if (data) {
                 try { registeredUsers = JSON.parse(data); } catch(e) { registeredUsers = []; }
@@ -541,11 +541,29 @@
                 registeredUsers = [];
             }
 
-            // บังคับการันตีให้ DEFAULT_ADMIN_EMAIL มีสิทธิ์เสมอ
-            if (!registeredUsers.includes(defaultAdmin)) {
-                registeredUsers.push(defaultAdmin);
-                localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
+            // 2. ดึงข้อมูลจาก Cloud Firestore เพิ่มเติม (ถ้ามี)
+            const SDK = window.FirebaseSDK;
+            if (SDK && SDK.db) {
+                try {
+                    const userSettingRef = SDK.doc(SDK.db, 'artifacts', SDK.appId, 'public', 'data', 'settings', 'allowed_users');
+                    const snapshot = await SDK.getDoc?.(userSettingRef);
+                    if (snapshot && snapshot.exists() && snapshot.data().list) {
+                        const cloudList = snapshot.data().list;
+                        cloudList.forEach(u => {
+                            if (!registeredUsers.includes(u.toLowerCase())) {
+                                registeredUsers.push(u.toLowerCase());
+                            }
+                        });
+                    }
+                } catch(e){}
             }
+
+            // 3. การันตีให้ DEFAULT_ADMIN_EMAIL จาก config.js มีสิทธิ์เสมอ
+            if (defaultAdmin && !registeredUsers.includes(defaultAdmin)) {
+                registeredUsers.push(defaultAdmin);
+            }
+            
+            localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
         }
 
         function saveRegisteredUsers() {
@@ -631,12 +649,12 @@
             const email = document.getElementById('authEmail').value.trim().toLowerCase();
             if (!email) return;
 
-            // อ่านค่าสิทธิ์ล่าสุด
+            // โหลดสิทธิ์ล่าสุดจากทั้ง LocalStorage, Config และ Cloud
             await loadRegisteredUsers();
             
             const defaultAdmin = (window.DEFAULT_ADMIN_EMAIL || 'admin@company.com').toLowerCase();
 
-            // Strict Check: ตรวจสอบว่าเป็น Admin Email หรือเป็น Whitelist Email หรือไม่
+            // Strict Check: ตรวจสอบสิทธิ์โดยตรง
             const isAllowed = registeredUsers.includes(email) || email === defaultAdmin;
 
             if (!isAllowed) {
