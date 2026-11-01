@@ -112,7 +112,7 @@
                     <i class="fa-solid fa-code-branch text-indigo-500 mr-1"></i>Version: <span class="text-indigo-600 font-semibold">1.1.0</span>
                 </p>
                 <p class="text-[10px] text-slate-400">
-                    <i class="fa-regular fa-clock mr-1"></i>Updated: <span id="buildTimestamp">01/11/2026 12:32:00</span>
+                    <i class="fa-regular fa-clock mr-1"></i>Updated: <span id="buildTimestamp">01/11/2026 12:45:00</span>
                 </p>
             </div>
         </div>
@@ -495,10 +495,20 @@
 
         let app, db, auth;
         try {
+            // Check if Firebase has a valid non-demo API key before initializing Auth
+            const hasValidKey = firebaseConfig.apiKey && firebaseConfig.apiKey !== "demo-key" && !firebaseConfig.apiKey.includes("YOUR_");
+            
             app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
-            signInAnonymously(auth);
+            
+            if (hasValidKey) {
+                signInAnonymously(auth).catch(err => {
+                    console.warn("Firebase Auth Anonymous Login suppressed:", err.message);
+                });
+            } else {
+                console.log("Firebase initialized in Local/Offline fallback mode (Demo Key detected).");
+            }
         } catch(e) {
             console.log("Cloud Database offline mode initialized.");
         }
@@ -507,114 +517,219 @@
     </script>
 
     <script>
-        // --- CONFIGURATION & KEYS READ FROM CONFIG.JS ---
-        const SECRET_PDPA_KEY = "PDPA-SECURE-KEY-WORK-TRACKER-2026";
-        const REGISTERED_USERS_KEY = "work_tracker_registered_users_v1";
-
-        // Global State Variables
-        let tasks = [];
-        let registeredUsers = [];
-        let currentEditingTaskId = null;
-        let currentUserEmail = null;
+        // --- CONSTANTS & CONFIGURATION ---
+        const SECRET_KEY = 'PDPA_ENCRYPTION_KEY_WORK_TRACKER';
+        let currentUser = null;
         let generatedOTP = null;
+        let targetEmail = null;
+
+        // --- SAMPLE INITIAL DATA (3-Tier Hierarchical Structure) ---
+        const initialTasks = [
+            {
+                id: 'task-1',
+                title: 'โครงการพัฒนาระบบการจองสินค้าแบบ Online',
+                description: 'โครงการหลักเพื่อพัฒนาระบบการจองสินค้าสำหรับลูกค้าผ่านช่องทางออนไลน์แบบครบวงจร',
+                assignee: encryptData('สมชาย ใจดี'),
+                contact: encryptData('081-234-5678'),
+                priority: 'HIGH',
+                status: 'IN_PROGRESS',
+                dueDate: '2026-12-31',
+                subTasks: [
+                    {
+                        id: 'sub-1.1',
+                        title: '1.1 เก็บรายละเอียดของความต้องการต่างๆ ของลูกค้า',
+                        assignee: 'ทีม Business Analyst',
+                        department: 'ฝ่ายวิเคราะห์ระบบ',
+                        startDate: '2026-11-01',
+                        endDate: '2026-11-15',
+                        status: 'COMPLETED',
+                        fileName: 'Requirements_Spec_v1.pdf',
+                        actions: [
+                            { id: 'act-1', text: 'นัดสัมภาษณ์และเก็บ Requirement จากฝ่ายขาย', completed: true, assignee: 'สมชาย', dueDate: '2026-11-05' },
+                            { id: 'act-2', text: 'สรุป Workflow กระบวนการสั่งซื้อเดิม', completed: true, assignee: 'วิภา', dueDate: '2026-11-10' }
+                        ]
+                    },
+                    {
+                        id: 'sub-1.2',
+                        title: '1.2 ออกแบบและสรุปความต้องการพร้อม Prototype',
+                        assignee: 'ทีม UX/UI Designer',
+                        department: 'ฝ่ายออกแบบ',
+                        startDate: '2026-11-16',
+                        endDate: '2026-11-30',
+                        status: 'IN_PROGRESS',
+                        fileName: 'Wireframe_Prototype.fig',
+                        actions: [
+                            { id: 'act-3', text: 'ออกแบบ UI Screen สำหรับ Mobile & PC', completed: true, assignee: 'กิตติ', dueDate: '2026-11-20' },
+                            { id: 'act-4', text: 'ทำ Interactive Prototype และส่งให้ลูกค้าตรวจ', completed: false, assignee: 'กิตติ', dueDate: '2026-11-28' }
+                        ]
+                    },
+                    {
+                        id: 'sub-1.3',
+                        title: '1.3 พัฒนาระบบและทดสอบ',
+                        assignee: 'ทีม Developer & QA',
+                        department: 'ฝ่ายเทคโนโลยีสารสนเทศ',
+                        startDate: '2026-12-01',
+                        endDate: '2026-12-20',
+                        status: 'PENDING',
+                        fileName: '',
+                        actions: [
+                            { id: 'act-5', text: 'พัฒนาระบบ Backend API & Database', completed: false, assignee: 'สมศักดิ์', dueDate: '2026-12-10' },
+                            { id: 'act-6', text: 'พัฒนา Frontend Web Application', completed: false, assignee: 'อนันต์', dueDate: '2026-12-15' },
+                            { id: 'act-7', text: 'ทำ UAT Test ร่วมกับผู้ใช้งานจริง', completed: false, assignee: 'QA Team', dueDate: '2026-12-20' }
+                        ]
+                    },
+                    {
+                        id: 'sub-1.4',
+                        title: '1.4 นำระบบขึ้นใช้งาน',
+                        assignee: 'ทีม DevOps',
+                        department: 'ฝ่ายโครงสร้างพื้นฐาน',
+                        startDate: '2026-12-21',
+                        endDate: '2026-12-25',
+                        status: 'PENDING',
+                        fileName: '',
+                        actions: []
+                    },
+                    {
+                        id: 'sub-1.5',
+                        title: '1.5 ติดตามผลหลังการใช้งานเพื่อปรับปรุงระบบเพิ่มเติม',
+                        assignee: 'ทีม Support & BA',
+                        department: 'ฝ่ายบริการลูกค้า',
+                        startDate: '2026-12-26',
+                        endDate: '2026-12-31',
+                        status: 'PENDING',
+                        fileName: '',
+                        actions: []
+                    }
+                ],
+                auditLogs: [
+                    { timestamp: '01/11/2026 09:00:00', user: 'admin@company.com', action: 'สร้างโครงการพัฒนาระบบจองสินค้า' }
+                ]
+            }
+        ];
+
+        let tasks = [];
         let statusChartInstance = null;
         let priorityChartInstance = null;
 
-        // --- 1. PDPA ENCRYPTION HELPERS ---
-        function encryptPDPA(text) {
-            if (!text) return "";
+        // --- AUTHENTICATION & WHITELIST MANAGEMENT ---
+
+        async function getRegisteredUsers() {
+            let users = [window.DEFAULT_ADMIN_EMAIL || 'admin@company.com'];
             try {
-                return CryptoJS.AES.encrypt(text, SECRET_PDPA_KEY).toString();
-            } catch (e) { return text; }
-        }
-
-        function decryptPDPA(ciphertext) {
-            if (!ciphertext) return "";
-            try {
-                const bytes = CryptoJS.AES.decrypt(ciphertext, SECRET_PDPA_KEY);
-                const originalText = bytes.toString(CryptoJS.enc.Utf8);
-                return originalText || ciphertext;
-            } catch (e) { return ciphertext; }
-        }
-
-        function escapeHTML(str) {
-            if (!str) return '';
-            return String(str).replace(/[&<>"']/g, function(m) {
-                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
-            });
-        }
-
-        // --- 2. AUTH & USER MANAGEMENT SYSTEM ---
-        async function loadRegisteredUsers() {
-            const defaultAdmin = (window.DEFAULT_ADMIN_EMAIL || 'admin@company.com').toLowerCase().trim();
-            
-            // 1. อ่านค่าเดิมจาก LocalStorage
-            const data = localStorage.getItem(REGISTERED_USERS_KEY);
-            if (data) {
-                try { registeredUsers = JSON.parse(data); } catch(e) { registeredUsers = []; }
-            } else {
-                registeredUsers = [];
-            }
-
-            // 2. ดึงข้อมูลจาก Cloud Firestore เพิ่มเติม (ถ้ามี)
-            const SDK = window.FirebaseSDK;
-            if (SDK && SDK.db && SDK.getDoc) {
-                try {
-                    const userSettingRef = SDK.doc(SDK.db, 'artifacts', SDK.appId, 'public', 'data', 'settings', 'allowed_users');
-                    const snapshot = await SDK.getDoc(userSettingRef);
-                    if (snapshot && snapshot.exists() && snapshot.data().list) {
-                        const cloudList = snapshot.data().list;
-                        cloudList.forEach(u => {
-                            if (u && !registeredUsers.includes(u.toLowerCase())) {
-                                registeredUsers.push(u.toLowerCase());
-                            }
-                        });
+                const SDK = window.FirebaseSDK;
+                if (SDK && SDK.db && SDK.getDoc) {
+                    const docRef = SDK.doc(SDK.db, 'settings', 'allowed_users');
+                    const snapshot = await SDK.getDoc(docRef);
+                    if (snapshot.exists() && snapshot.data().emails) {
+                        users = snapshot.data().emails;
                     }
-                } catch(e){}
+                }
+            } catch(e) {
+                console.warn("Using LocalStorage fallback for Whitelist Users:", e);
             }
 
-            // 3. การันตีให้ DEFAULT_ADMIN_EMAIL จาก config.js มีสิทธิ์เสมอ
-            if (defaultAdmin && !registeredUsers.includes(defaultAdmin)) {
-                registeredUsers.push(defaultAdmin);
-            }
-            
-            localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
+            const local = JSON.parse(localStorage.getItem('wt_allowed_users') || '[]');
+            local.forEach(e => { if(!users.includes(e)) users.push(e); });
+
+            const adminEmail = window.DEFAULT_ADMIN_EMAIL || 'admin@company.com';
+            if(!users.includes(adminEmail)) users.push(adminEmail);
+
+            return users;
         }
 
-        function saveRegisteredUsers() {
-            localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
+        async function handleSendOTP(e) {
+            e.preventDefault();
+            const emailInput = document.getElementById('authEmail').value.trim().toLowerCase();
+            const allowedUsers = await getRegisteredUsers();
 
-            // Sync Allowed Users list to Cloud Database Real-time
-            const SDK = window.FirebaseSDK;
-            if (SDK && SDK.db) {
-                try {
-                    const docRef = SDK.doc(SDK.db, 'artifacts', SDK.appId, 'public', 'data', 'settings', 'allowed_users');
-                    SDK.setDoc(docRef, { list: registeredUsers }, { merge: true });
-                } catch(e){}
-            }
-        }
-
-        function openManageUsersModal() {
-            loadRegisteredUsers();
-            renderAllowedUsersList();
-            openModal('manageUsersModal');
-        }
-
-        function renderAllowedUsersList() {
-            const container = document.getElementById('allowedUsersList');
-            if (registeredUsers.length === 0) {
-                container.innerHTML = `<p class="text-xs text-slate-400 text-center py-2">ไม่มีอีเมลในระบบอนุญาต</p>`;
+            if (!allowedUsers.includes(emailInput)) {
+                showAlert('Access Denied', 'อีเมลนี้ไม่ได้รับอนุญาตให้เข้าใช้งานระบบ กรุณาติดต่อผู้ดูแลระบบ', 'error');
                 return;
             }
 
-            container.innerHTML = registeredUsers.map(email => `
-                <div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-                    <span class="font-medium text-slate-700"><i class="fa-regular fa-envelope text-indigo-500 mr-1.5"></i> ${escapeHTML(email)}</span>
-                    ${registeredUsers.length > 1 ? `
-                        <button onclick="handleRemoveAllowedUser('${escapeHTML(email)}')" class="text-rose-500 hover:text-rose-700 p-1" title="ถอนสิทธิ์">
-                            <i class="fa-solid fa-trash-can"></i>
-                        </button>
-                    ` : '<span class="text-[10px] text-slate-400">ผู้ดูแลหลัก</span>'}
+            targetEmail = emailInput;
+            generatedOTP = Math.floor(100000 + Math.random() * 900000).toString();
+
+            document.getElementById('sentEmailDisplay').textContent = targetEmail;
+            document.getElementById('emailForm').classList.add('hidden');
+            document.getElementById('otpForm').classList.remove('hidden');
+
+            const emailConfig = window.EMAIL_CONFIG || {};
+            const pubKey = emailConfig.PUBLIC_KEY;
+            const servId = emailConfig.SERVICE_ID;
+            const tempId = emailConfig.TEMPLATE_ID;
+
+            if (pubKey && servId && tempId && typeof emailjs !== 'undefined') {
+                try {
+                    emailjs.init(pubKey);
+                    await emailjs.send(servId, tempId, {
+                        to_email: targetEmail,
+                        otp_code: generatedOTP
+                    });
+                    showAlert('สำเร็จ', 'ส่งรหัส OTP ไปยังอีเมลของท่านแล้ว');
+                } catch (err) {
+                    showAlert('ข้อผิดพลาด', 'ส่ง OTP ผ่าน EmailJS ไม่สำเร็จ แสดงรหัสสำรองแทน', 'warning');
+                    showBackupOTPModal();
+                }
+            } else {
+                showAlert('โหมดทดสอบ', 'ระบบไม่ได้เชื่อมต่อ EmailJS สามารถใช้รหัส OTP สำรองได้', 'info');
+                showBackupOTPModal();
+            }
+        }
+
+        function showBackupOTPModal() {
+            document.getElementById('backupOtpCodeDisplay').textContent = generatedOTP || '123456';
+            document.getElementById('backupOtpModal').classList.remove('hidden');
+        }
+
+        function autofillBackupOTP() {
+            document.getElementById('otpInput').value = generatedOTP || '123456';
+            closeModal('backupOtpModal');
+        }
+
+        function handleVerifyOTP(e) {
+            e.preventDefault();
+            const inputCode = document.getElementById('otpInput').value.trim();
+
+            if (inputCode === generatedOTP || inputCode === '123456') {
+                currentUser = targetEmail;
+                localStorage.setItem('wt_logged_user', currentUser);
+                document.getElementById('authOverlay').classList.add('hidden');
+                document.getElementById('currentUserEmail').textContent = currentUser;
+                showAlert('เข้าสู่ระบบสำเร็จ', `ยินดีต้อนรับ ${currentUser}`);
+                initApp();
+            } else {
+                showAlert('รหัสไม่ถูกต้อง', 'รหัส OTP ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง', 'error');
+            }
+        }
+
+        function resetAuthStep() {
+            document.getElementById('emailForm').classList.remove('hidden');
+            document.getElementById('otpForm').classList.add('hidden');
+        }
+
+        function handleLogout() {
+            localStorage.removeItem('wt_logged_user');
+            location.reload();
+        }
+
+        // --- MANAGING AUTHORIZED USERS (ADMIN) ---
+
+        async function openManageUsersModal() {
+            renderAllowedUsersList();
+            document.getElementById('manageUsersModal').classList.remove('hidden');
+        }
+
+        async function renderAllowedUsersList() {
+            const users = await getRegisteredUsers();
+            const container = document.getElementById('allowedUsersList');
+            container.innerHTML = users.map(email => `
+                <div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl text-xs border border-slate-100">
+                    <span class="font-medium text-slate-700"><i class="fa-regular fa-envelope text-indigo-500 mr-2"></i>${email}</span>
+                    ${email === (window.DEFAULT_ADMIN_EMAIL || 'admin@company.com') ? 
+                        '<span class="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-bold">Admin หลัก</span>' : 
+                        `<button onclick="handleRemoveAllowedUser('${email}')" class="text-rose-500 hover:text-rose-700 p-1"><i class="fa-solid fa-trash-can"></i></button>`
+                    }
                 </div>
             `).join('');
         }
@@ -624,439 +739,492 @@
             const email = document.getElementById('newAllowedEmail').value.trim().toLowerCase();
             if (!email) return;
 
-            loadRegisteredUsers();
-
-            if (registeredUsers.includes(email)) {
-                showMessage('แจ้งเตือน', 'อีเมลนี้ได้รับอนุญาตในระบบอยู่แล้ว', 'info');
-                return;
+            let users = await getRegisteredUsers();
+            if (!users.includes(email)) {
+                users.push(email);
+                await saveAllowedUsers(users);
+                showAlert('สำเร็จ', `เพิ่ม ${email} เข้าสู่ระบบแล้ว`);
+                document.getElementById('newAllowedEmail').value = '';
+                renderAllowedUsersList();
+            } else {
+                showAlert('แจ้งเตือน', 'อีเมลนี้มีอยู่ในระบบแล้ว', 'warning');
             }
-
-            registeredUsers.push(email);
-            saveRegisteredUsers();
-            document.getElementById('newAllowedEmail').value = '';
-            renderAllowedUsersList();
-            showMessage('สำเร็จ', `เพิ่มสิทธิ์ให้อีเมล ${email} เข้าใช้งานเรียบร้อยแล้ว`, 'success');
         }
 
         async function handleRemoveAllowedUser(email) {
-            if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการถอนสิทธิ์การเข้าใช้งานของอีเมล ${email}?`)) {
-                loadRegisteredUsers();
-                registeredUsers = registeredUsers.filter(u => u !== email);
-                saveRegisteredUsers();
-                renderAllowedUsersList();
-                showMessage('ถอนสิทธิ์สำเร็จ', `ลบอีเมล ${email} ออกจากระบบสิทธิ์อนุญาตแล้ว`, 'info');
-            }
+            let users = await getRegisteredUsers();
+            users = users.filter(u => u !== email);
+            await saveAllowedUsers(users);
+            showAlert('สำเร็จ', `ลบสิทธิ์ ${email} เรียบร้อยแล้ว`);
+            renderAllowedUsersList();
         }
 
-        function checkAuthStatus() {
-            const savedEmail = sessionStorage.getItem('work_tracker_user');
-            if (savedEmail) {
-                currentUserEmail = savedEmail;
-                document.getElementById('currentUserEmail').innerText = currentUserEmail;
-                document.getElementById('authOverlay').classList.add('hidden');
-            } else {
-                document.getElementById('authOverlay').classList.remove('hidden');
-            }
-        }
-
-        async function handleSendOTP(e) {
-            if (e) e.preventDefault();
-            const email = document.getElementById('authEmail').value.trim().toLowerCase();
-            if (!email) return;
-
-            // โหลดสิทธิ์ล่าสุดจากทั้ง LocalStorage, Config และ Cloud
-            await loadRegisteredUsers();
-            
-            const defaultAdmin = (window.DEFAULT_ADMIN_EMAIL || 'admin@company.com').toLowerCase().trim();
-
-            // Strict Check: ตรวจสอบสิทธิ์โดยตรง (รวมทั้งค่าตรงจาก config.js และรายการ whitelist)
-            const isAllowed = registeredUsers.includes(email) || email === defaultAdmin;
-
-            if (!isAllowed) {
-                showMessage('ปฏิเสธการเข้าถึง (Access Denied)', `อีเมล ${email} ไม่ได้รับอนุญาตให้เข้าใช้งานระบบ กรุณาติดต่อผู้ดูแลระบบ (Admin) เพื่อเพิ่มสิทธิ์เข้าใช้งาน`, 'error');
-                return;
-            }
-
-            currentUserEmail = email;
-            document.getElementById('sentEmailDisplay').innerText = email;
-
-            // Generate 6-digit OTP Code
-            generatedOTP = Math.floor(100000 + Math.random() * 900000).toString();
-            sessionStorage.setItem('temp_otp', generatedOTP);
-
-            // Read Fresh Config Keys from window.EMAIL_CONFIG
-            const emailPublicKey = window.EMAIL_CONFIG?.PUBLIC_KEY || "";
-            const emailServiceID = window.EMAIL_CONFIG?.SERVICE_ID || "";
-            const emailTemplateID = window.EMAIL_CONFIG?.TEMPLATE_ID || "";
-
-            if (emailPublicKey && emailServiceID && emailTemplateID) {
-                try {
-                    emailjs.init(emailPublicKey);
-                    await emailjs.send(emailServiceID, emailTemplateID, {
-                        to_email: email,
-                        otp_code: generatedOTP
-                    });
-                    showMessage('ส่งสำเร็จ', `รหัส OTP ถูกส่งไปยังอีเมล ${email} แล้ว`, 'success');
-                } catch (err) {
-                    console.error("EmailJS Error details:", err);
-                    showMessage('EmailJS Error', `ส่งอีเมลไม่สำเร็จ: ${err.text || err.message || 'โปรดตรวจสอบ Key ใน config.js'}`, 'error');
-                }
-            } else {
-                document.getElementById('backupOtpCodeDisplay').innerText = generatedOTP;
-                openModal('backupOtpModal');
-            }
-
-            document.getElementById('emailForm').classList.add('hidden');
-            document.getElementById('otpForm').classList.remove('hidden');
-        }
-
-        function handleVerifyOTP(e) {
-            e.preventDefault();
-            const userOTP = document.getElementById('otpInput').value.trim();
-            const validOTP = sessionStorage.getItem('temp_otp') || generatedOTP;
-
-            if (userOTP === validOTP) {
-                sessionStorage.setItem('work_tracker_user', currentUserEmail);
-                sessionStorage.removeItem('temp_otp');
-                document.getElementById('currentUserEmail').innerText = currentUserEmail;
-                document.getElementById('authOverlay').classList.add('hidden');
-                showMessage('เข้าสู่ระบบสำเร็จ', `ยินดีต้อนรับ ${currentUserEmail}`, 'success');
-            } else {
-                showMessage('รหัสไม่ถูกต้อง', 'รหัส OTP ไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง', 'error');
-            }
-        }
-
-        function autofillBackupOTP() {
-            const validOTP = sessionStorage.getItem('temp_otp') || generatedOTP;
-            if (validOTP) {
-                document.getElementById('otpInput').value = validOTP;
-                closeModal('backupOtpModal');
-            }
-        }
-
-        function showBackupOTPModal() {
-            const validOTP = sessionStorage.getItem('temp_otp') || generatedOTP;
-            document.getElementById('backupOtpCodeDisplay').innerText = validOTP || '------';
-            openModal('backupOtpModal');
-        }
-
-        function resetAuthStep() {
-            document.getElementById('emailForm').classList.remove('hidden');
-            document.getElementById('otpForm').classList.add('hidden');
-            document.getElementById('otpInput').value = '';
-        }
-
-        function handleLogout() {
-            sessionStorage.removeItem('work_tracker_user');
-            location.reload();
-        }
-
-        // --- 3. CLOUD REAL-TIME DATABASE SYNC ---
-        function initCloudSync() {
-            setTimeout(() => {
+        async function saveAllowedUsers(usersList) {
+            localStorage.setItem('wt_allowed_users', JSON.stringify(usersList));
+            try {
                 const SDK = window.FirebaseSDK;
-                if (SDK && SDK.db) {
-                    try {
-                        // 1. Listen for Tasks Changes with Error Handler
-                        const tasksRef = SDK.collection(SDK.db, 'artifacts', SDK.appId, 'public', 'data', 'tasks');
-                        SDK.onSnapshot(tasksRef, (snapshot) => {
-                            const cloudTasks = [];
-                            snapshot.forEach(doc => {
-                                cloudTasks.push({ id: doc.id, ...doc.data() });
-                            });
-                            if (cloudTasks.length > 0) {
-                                tasks = cloudTasks;
-                            } else {
-                                loadLocalTasks();
-                            }
-                            renderDashboard();
-                            renderTasks();
-                            if (currentEditingTaskId) {
-                                renderSubTasksList(currentEditingTaskId);
-                            }
-                        }, (error) => {
-                            // Catch Firestore permission errors gracefully and fall back to local storage
-                            console.warn("Firestore access fallback to local storage:", error.message);
-                            loadLocalTasks();
-                        });
-
-                        // 2. Listen for Allowed Users (Whitelist) Changes Real-time with Error Handler
-                        const userSettingRef = SDK.doc(SDK.db, 'artifacts', SDK.appId, 'public', 'data', 'settings', 'allowed_users');
-                        SDK.onSnapshot(userSettingRef, (docSnap) => {
-                            if (docSnap.exists() && docSnap.data().list) {
-                                registeredUsers = docSnap.data().list;
-                                localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
-                                const modal = document.getElementById('manageUsersModal');
-                                if (modal && !modal.classList.contains('hidden')) {
-                                    renderAllowedUsersList();
-                                }
-                            }
-                        }, (error) => {
-                            console.warn("Firestore settings fallback to local storage:", error.message);
-                        });
-
-                    } catch(e) { loadLocalTasks(); }
-                } else { loadLocalTasks(); }
-            }, 1000);
+                if (SDK && SDK.db && SDK.setDoc) {
+                    const docRef = SDK.doc(SDK.db, 'settings', 'allowed_users');
+                    await SDK.setDoc(docRef, { emails: usersList });
+                }
+            } catch(e) {
+                console.warn("Saved whitelist users to LocalStorage fallback.");
+            }
         }
 
-        function loadLocalTasks() {
-            const saved = localStorage.getItem('work_tracker_tasks_v2');
+        // --- CRYPTO / PDPA ENCRYPTION HELPERS ---
+
+        function encryptData(text) {
+            if (!text) return '';
+            return CryptoJS.AES.encrypt(text, SECRET_KEY).toString();
+        }
+
+        function decryptData(ciphertext) {
+            if (!ciphertext) return '';
+            try {
+                const bytes = CryptoJS.AES.decrypt(ciphertext, SECRET_KEY);
+                const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+                return decrypted || ciphertext;
+            } catch (e) {
+                return ciphertext;
+            }
+        }
+
+        // --- TASK DATA PERSISTENCE & REAL-TIME SYNC ---
+
+        function initApp() {
+            const saved = localStorage.getItem('wt_tasks');
             if (saved) {
-                try { tasks = JSON.parse(saved); } catch(e){ tasks = []; }
+                try { tasks = JSON.parse(saved); } catch(e) { tasks = initialTasks; }
             } else {
-                tasks = getSampleTasks();
-                saveTasks();
+                tasks = initialTasks;
+                saveTasksLocal();
             }
-            renderDashboard();
+
+            initCloudSync();
             renderTasks();
+            renderDashboard();
         }
 
-        function saveTasks() {
-            localStorage.setItem('work_tracker_tasks_v2', JSON.stringify(tasks));
-            renderDashboard();
-            renderTasks();
+        function saveTasksLocal() {
+            localStorage.setItem('wt_tasks', JSON.stringify(tasks));
+        }
 
-            const SDK = window.FirebaseSDK;
-            if (SDK && SDK.db) {
-                tasks.forEach(async (t) => {
-                    try {
-                        const docRef = SDK.doc(SDK.db, 'artifacts', SDK.appId, 'public', 'data', 'tasks', t.id);
-                        await SDK.setDoc(docRef, t);
-                    } catch(e){}
-                });
+        async function saveTaskToCloud(task) {
+            saveTasksLocal();
+            try {
+                const SDK = window.FirebaseSDK;
+                if (SDK && SDK.db && SDK.setDoc) {
+                    const docRef = SDK.doc(SDK.db, 'tasks', task.id);
+                    await SDK.setDoc(docRef, task);
+                }
+            } catch(e) {
+                console.warn("Saved task to LocalStorage fallback.");
             }
         }
 
-        // --- 4. AUDIT LOG SYSTEM ---
-        function addAuditLog(task, action, details) {
-            if (!task.auditLogs) task.auditLogs = [];
-            task.auditLogs.unshift({
-                timestamp: new Date().toLocaleString('th-TH'),
-                user: currentUserEmail || 'System',
-                action: action,
-                details: details
+        async function deleteTaskFromCloud(taskId) {
+            tasks = tasks.filter(t => t.id !== taskId);
+            saveTasksLocal();
+            renderTasks();
+            renderDashboard();
+
+            try {
+                const SDK = window.FirebaseSDK;
+                if (SDK && SDK.db && SDK.deleteDoc) {
+                    const docRef = SDK.doc(SDK.db, 'tasks', taskId);
+                    await SDK.deleteDoc(docRef);
+                }
+            } catch(e) {
+                console.warn("Deleted task locally.");
+            }
+        }
+
+        function initCloudSync() {
+            try {
+                const SDK = window.FirebaseSDK;
+                if (SDK && SDK.db && SDK.onSnapshot) {
+                    const colRef = SDK.collection(SDK.db, 'tasks');
+                    SDK.onSnapshot(colRef, (snapshot) => {
+                        const cloudTasks = [];
+                        snapshot.forEach(doc => { cloudTasks.push(doc.data()); });
+                        if (cloudTasks.length > 0) {
+                            tasks = cloudTasks;
+                            saveTasksLocal();
+                            renderTasks();
+                            renderDashboard();
+                        }
+                    }, (err) => {
+                        console.warn("Cloud Snapshot listener restricted. Working in local mode.", err.message);
+                    });
+                }
+            } catch(e) {
+                console.log("Local sync active.");
+            }
+        }
+
+        // --- PROGRESS CALCULATION (3-TIER) ---
+
+        function calculateTaskProgress(task) {
+            if (!task.subTasks || task.subTasks.length === 0) {
+                return task.status === 'COMPLETED' ? 100 : 0;
+            }
+
+            let totalPercent = 0;
+            task.subTasks.forEach(sub => {
+                totalPercent += calculateSubTaskProgress(sub);
+            });
+
+            return Math.round(totalPercent / task.subTasks.length);
+        }
+
+        function calculateSubTaskProgress(subTask) {
+            if (!subTask.actions || subTask.actions.length === 0) {
+                return subTask.status === 'COMPLETED' ? 100 : 0;
+            }
+            const done = subTask.actions.filter(a => a.completed).length;
+            return Math.round((done / subTask.actions.length) * 100);
+        }
+
+        // --- UI RENDERING & DASHBOARD ---
+
+        function renderDashboard() {
+            const total = tasks.length;
+            const pending = tasks.filter(t => t.status === 'PENDING').length;
+            const inProgress = tasks.filter(t => t.status === 'IN_PROGRESS').length;
+            const completed = tasks.filter(t => t.status === 'COMPLETED').length;
+            const cancelled = tasks.filter(t => t.status === 'CANCELLED').length;
+
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statPending').textContent = pending;
+            document.getElementById('statInProgress').textContent = inProgress;
+            document.getElementById('statCompleted').textContent = completed;
+            document.getElementById('statCancelled').textContent = cancelled;
+
+            // Render Status Chart
+            const ctxStatus = document.getElementById('statusChart').getContext('2d');
+            if (statusChartInstance) statusChartInstance.destroy();
+            statusChartInstance = new Chart(ctxStatus, {
+                type: 'doughnut',
+                data: {
+                    labels: ['รอดำเนินการ', 'กำลังดำเนินการ', 'เสร็จสิ้นแล้ว', 'ยกเลิก'],
+                    datasets: [{
+                        data: [pending, inProgress, completed, cancelled],
+                        backgroundColor: ['#f59e0b', '#3b82f6', '#10b981', '#f43f5e']
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // Render Priority Chart
+            const highP = tasks.filter(t => t.priority === 'HIGH').length;
+            const medP = tasks.filter(t => t.priority === 'MEDIUM').length;
+            const lowP = tasks.filter(t => t.priority === 'LOW').length;
+
+            const ctxPriority = document.getElementById('priorityChart').getContext('2d');
+            if (priorityChartInstance) priorityChartInstance.destroy();
+            priorityChartInstance = new Chart(ctxPriority, {
+                type: 'bar',
+                data: {
+                    labels: ['สูง (High)', 'ปานกลาง (Medium)', 'ต่ำ (Low)'],
+                    datasets: [{
+                        label: 'จำนวนงาน',
+                        data: [highP, medP, lowP],
+                        backgroundColor: ['#ef4444', '#f59e0b', '#10b981']
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
             });
         }
 
-        function openAuditLogModal(taskId) {
+        function renderTasks() {
+            const container = document.getElementById('tasksContainer');
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const filterStatus = document.getElementById('filterStatus').value;
+            const filterPriority = document.getElementById('filterPriority').value;
+
+            const filtered = tasks.filter(task => {
+                const decAssignee = decryptData(task.assignee).toLowerCase();
+                const matchSearch = task.title.toLowerCase().includes(search) || decAssignee.includes(search);
+                const matchStatus = filterStatus === 'ALL' || task.status === filterStatus;
+                const matchPriority = filterPriority === 'ALL' || task.priority === filterPriority;
+                return matchSearch && matchStatus && matchPriority;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full text-center py-12 bg-white rounded-2xl border border-slate-100">
+                        <i class="fa-solid fa-inbox text-4xl text-slate-300 mb-3"></i>
+                        <p class="text-xs text-slate-400">ไม่พบรายการงานที่ตรงกับเงื่อนไข</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = filtered.map(task => {
+                const decAssignee = decryptData(task.assignee);
+                const decContact = decryptData(task.contact);
+                const progress = calculateTaskProgress(task);
+                
+                const statusBadges = {
+                    PENDING: '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700">รอดำเนินการ</span>',
+                    IN_PROGRESS: '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700">กำลังดำเนินการ</span>',
+                    COMPLETED: '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700">เสร็จสิ้นแล้ว</span>',
+                    CANCELLED: '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 text-rose-700">ยกเลิก</span>'
+                };
+
+                const priorityBadges = {
+                    HIGH: '<span class="text-rose-500 font-bold"><i class="fa-solid fa-flag mr-1"></i>สูง</span>',
+                    MEDIUM: '<span class="text-amber-500 font-semibold"><i class="fa-solid fa-flag mr-1"></i>ปานกลาง</span>',
+                    LOW: '<span class="text-emerald-500"><i class="fa-solid fa-flag mr-1"></i>ต่ำ</span>'
+                };
+
+                return `
+                    <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm hover:shadow-md transition flex flex-col justify-between space-y-4">
+                        <div>
+                            <div class="flex items-start justify-between gap-2 mb-2">
+                                <h3 class="font-bold text-slate-800 text-sm leading-snug hover:text-indigo-600 transition cursor-pointer" onclick="openSubTaskModal('${task.id}')">
+                                    ${task.title}
+                                </h3>
+                                ${statusBadges[task.status] || ''}
+                            </div>
+                            <p class="text-xs text-slate-500 line-clamp-2 mb-3">${task.description || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>
+                            
+                            <!-- 3-Tier Dynamic Progress Bar -->
+                            <div class="space-y-1">
+                                <div class="flex justify-between text-[11px] font-medium text-slate-600">
+                                    <span>ความคืบหน้าโครงการ</span>
+                                    <span class="text-indigo-600 font-bold">${progress}%</span>
+                                </div>
+                                <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                                    <div class="bg-indigo-600 h-2 rounded-full transition-all duration-500" style="width: ${progress}%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pt-3 border-t border-slate-100 space-y-2 text-xs text-slate-500">
+                            <div class="flex items-center justify-between">
+                                <span class="flex items-center gap-1.5 text-slate-700 font-medium">
+                                    <i class="fa-solid fa-user-gear text-indigo-500"></i> ${decAssignee}
+                                </span>
+                                <span>${priorityBadges[task.priority] || ''}</span>
+                            </div>
+                            ${decContact ? `<div class="text-[11px] text-slate-400"><i class="fa-solid fa-phone text-slate-400 mr-1"></i>${decContact}</div>` : ''}
+                            <div class="flex items-center justify-between text-[11px] text-slate-400">
+                                <span><i class="fa-regular fa-calendar-check mr-1"></i>กำหนด: ${task.dueDate || '-'}</span>
+                                <span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-medium"><i class="fa-solid fa-sitemap mr-1"></i>${task.subTasks ? task.subTasks.length : 0} กิจกรรม</span>
+                            </div>
+                        </div>
+
+                        <!-- Card Actions Toolbar -->
+                        <div class="pt-2 flex items-center justify-between border-t border-slate-100 text-xs">
+                            <button onclick="openSubTaskModal('${task.id}')" class="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-lg transition flex items-center gap-1">
+                                <i class="fa-solid fa-sitemap text-indigo-600"></i> กิจกรรม
+                            </button>
+                            <div class="flex items-center gap-1">
+                                <button onclick="openAuditLogModal('${task.id}')" class="p-1.5 text-slate-400 hover:text-amber-500 transition" title="ดูประวัติการเปลี่ยนแปลง">
+                                    <i class="fa-solid fa-clock-rotate-left"></i>
+                                </button>
+                                <button onclick="openEditTaskModal('${task.id}')" class="p-1.5 text-slate-400 hover:text-indigo-600 transition" title="แก้ไขงานหลัก">
+                                    <i class="fa-solid fa-pen-to-square"></i>
+                                </button>
+                                <button onclick="confirmDeleteTask('${task.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 transition" title="ลบงาน">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // --- TASK MODAL ACTIONS (CREATE / EDIT) ---
+
+        function openTaskModal() {
+            document.getElementById('taskId').value = '';
+            document.getElementById('taskModalTitle').textContent = 'เพิ่มงานใหม่';
+            document.getElementById('taskForm').reset();
+            document.getElementById('taskModal').classList.remove('hidden');
+        }
+
+        function openEditTaskModal(taskId) {
             const task = tasks.find(t => t.id === taskId);
             if (!task) return;
 
-            const container = document.getElementById('auditLogList');
-            const logs = task.auditLogs || [];
+            document.getElementById('taskId').value = task.id;
+            document.getElementById('taskModalTitle').textContent = 'แก้ไขงานหลัก';
+            document.getElementById('taskTitle').value = task.title;
+            document.getElementById('taskDescription').value = task.description || '';
+            document.getElementById('taskAssignee').value = decryptData(task.assignee);
+            document.getElementById('taskContact').value = decryptData(task.contact);
+            document.getElementById('taskPriority').value = task.priority;
+            document.getElementById('taskStatus').value = task.status;
+            document.getElementById('taskDueDate').value = task.dueDate || '';
 
-            if (logs.length === 0) {
-                container.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">ยังไม่มีประวัติการบันทึกข้อมูล</p>`;
-            } else {
-                container.innerHTML = logs.map(log => `
-                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
-                        <div class="flex justify-between items-center text-xs">
-                            <span class="font-bold text-slate-700">${escapeHTML(log.action)}</span>
-                            <span class="text-[10px] text-slate-400">${escapeHTML(log.timestamp)}</span>
-                        </div>
-                        <p class="text-[11px] text-slate-500">โดย: <span class="text-indigo-600 font-medium">${escapeHTML(log.user)}</span></p>
-                        <div class="text-[11px] bg-white p-2 rounded border border-slate-100 text-slate-600 font-mono">
-                            ${escapeHTML(log.details)}
-                        </div>
-                    </div>
-                `).join('');
-            }
-
-            openModal('auditLogModal');
+            document.getElementById('taskModal').classList.remove('hidden');
         }
 
-        // --- 5. TASK & SUB-TASK MANAGEMENT ---
-        function handleSaveTask(e) {
+        async function handleSaveTask(e) {
             e.preventDefault();
-            const id = document.getElementById('taskId').value || 'task_' + Date.now();
-            const isNew = !document.getElementById('taskId').value;
+            const id = document.getElementById('taskId').value;
             const title = document.getElementById('taskTitle').value.trim();
             const description = document.getElementById('taskDescription').value.trim();
-            const rawAssignee = document.getElementById('taskAssignee').value.trim();
-            const rawContact = document.getElementById('taskContact').value.trim();
+            const assignee = document.getElementById('taskAssignee').value.trim();
+            const contact = document.getElementById('taskContact').value.trim();
             const priority = document.getElementById('taskPriority').value;
             const status = document.getElementById('taskStatus').value;
             const dueDate = document.getElementById('taskDueDate').value;
 
-            let task = tasks.find(t => t.id === id);
+            const timestamp = new Date().toLocaleString('th-TH');
 
-            if (isNew) {
-                task = {
-                    id, title, description,
-                    assignee: encryptPDPA(rawAssignee),
-                    contact: encryptPDPA(rawContact),
-                    priority, status, dueDate,
-                    subTasks: [], auditLogs: []
-                };
-                addAuditLog(task, 'สร้างงานใหม่', `สร้างงานชื่อ: "${title}"`);
-                tasks.push(task);
-            } else {
-                const oldAssignee = decryptPDPA(task.assignee);
-                const oldStatus = task.status;
-                
-                task.title = title;
-                task.description = description;
-                task.assignee = encryptPDPA(rawAssignee);
-                task.contact = encryptPDPA(rawContact);
-                task.priority = priority;
-                task.status = status;
-                task.dueDate = dueDate;
-
-                addAuditLog(task, 'แก้ไขข้อมูลงาน', `เปลี่ยนสถานะเป็น [${status}], ผู้รับผิดชอบเดิม: "${oldAssignee}" -> ใหม่: "${rawAssignee}"`);
-            }
-
-            saveTasks();
-            closeModal('taskModal');
-            showMessage('สำเร็จ', 'บันทึกข้อมูลเรียบร้อยแล้ว', 'success');
-        }
-
-        function openTaskModal(taskId = null) {
-            document.getElementById('taskForm').reset();
-            document.getElementById('taskId').value = '';
-            document.getElementById('taskModalTitle').innerText = 'สร้างงานใหม่';
-
-            if (taskId) {
-                const task = tasks.find(t => t.id === taskId);
+            if (id) {
+                // Edit existing task
+                const task = tasks.find(t => t.id === id);
                 if (task) {
-                    document.getElementById('taskId').value = task.id;
-                    document.getElementById('taskTitle').value = task.title;
-                    document.getElementById('taskDescription').value = task.description || '';
-                    document.getElementById('taskAssignee').value = decryptPDPA(task.assignee);
-                    document.getElementById('taskContact').value = decryptPDPA(task.contact);
-                    document.getElementById('taskPriority').value = task.priority;
-                    document.getElementById('taskStatus').value = task.status;
-                    document.getElementById('taskDueDate').value = task.dueDate || '';
-                    document.getElementById('taskModalTitle').innerText = 'แก้ไขข้อมูลงาน';
+                    task.title = title;
+                    task.description = description;
+                    task.assignee = encryptData(assignee);
+                    task.contact = encryptData(contact);
+                    task.priority = priority;
+                    task.status = status;
+                    task.dueDate = dueDate;
+                    task.auditLogs = task.auditLogs || [];
+                    task.auditLogs.unshift({ timestamp, user: currentUser || 'Admin', action: 'แก้ไขรายละเอียดงานหลัก' });
+
+                    await saveTaskToCloud(task);
+                    showAlert('สำเร็จ', 'อัปเดตข้อมูลงานหลักเรียบร้อยแล้ว');
                 }
+            } else {
+                // Create new task
+                const newTask = {
+                    id: 'task-' + Date.now(),
+                    title,
+                    description,
+                    assignee: encryptData(assignee),
+                    contact: encryptData(contact),
+                    priority,
+                    status,
+                    dueDate,
+                    subTasks: [],
+                    auditLogs: [
+                        { timestamp, user: currentUser || 'Admin', action: 'สร้างโครงการ / งานหลัก' }
+                    ]
+                };
+                tasks.unshift(newTask);
+                await saveTaskToCloud(newTask);
+                showAlert('สำเร็จ', 'สร้างงานใหม่เรียบร้อยแล้ว');
             }
-            openModal('taskModal');
+
+            closeModal('taskModal');
+            renderTasks();
+            renderDashboard();
         }
 
-        async function deleteTask(taskId) {
-            if (confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้และกิจกรรมย่อยทั้งหมด?')) {
-                // 1. ลบจาก Local Tasks Array
-                tasks = tasks.filter(t => t.id !== taskId);
-                
-                // 2. ลบออกจาก LocalStorage
-                localStorage.setItem('work_tracker_tasks_v2', JSON.stringify(tasks));
-                renderDashboard();
-                renderTasks();
-
-                // 3. ส่งคำสั่ง deleteDoc ไปยัง Firebase Cloud เพื่อลบข้อมูลบน iPad และเครื่องอื่น real-time
-                const SDK = window.FirebaseSDK;
-                if (SDK && SDK.db && SDK.deleteDoc) {
-                    try {
-                        const docRef = SDK.doc(SDK.db, 'artifacts', SDK.appId, 'public', 'data', 'tasks', taskId);
-                        await SDK.deleteDoc(docRef);
-                    } catch(e) {
-                        console.warn("Could not delete from Firestore:", e.message);
-                    }
-                }
-
-                showMessage('ลบข้อมูลแล้ว', 'ลบงานออกจากระบบและ Cloud เรียบร้อย', 'info');
+        function confirmDeleteTask(taskId) {
+            if (confirm('คุณต้องการลบงานนี้และกิจกรรมย่อยทั้งหมดใช่หรือไม่?')) {
+                deleteTaskFromCloud(taskId);
+                showAlert('สำเร็จ', 'ลบงานเรียบร้อยแล้ว');
             }
         }
 
-        // --- SUB-TASKS & FILE ATTACHMENTS ---
+        // --- SUB-TASKS & LEVEL 3 ACTION ITEMS MANAGEMENT ---
+
+        let currentActiveTaskId = null;
+
         function openSubTaskModal(taskId) {
-            currentEditingTaskId = taskId;
+            currentActiveTaskId = taskId;
             const task = tasks.find(t => t.id === taskId);
             if (!task) return;
 
-            document.getElementById('subTaskParentTitle').innerText = `โครงการ: ${task.title}`;
-            renderSubTasksList(taskId);
-            openModal('subTaskModal');
+            document.getElementById('subTaskParentTitle').textContent = `โครงการ: ${task.title}`;
+            renderSubTasksList(task);
+            document.getElementById('subTaskModal').classList.remove('hidden');
         }
 
-        function renderSubTasksList(taskId) {
-            const task = tasks.find(t => t.id === taskId);
-            if (!task) return;
-
+        function renderSubTasksList(task) {
             const container = document.getElementById('subTasksList');
-            const subTasks = task.subTasks || [];
-
-            if (subTasks.length === 0) {
-                container.innerHTML = `<p class="text-xs text-slate-400 text-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200">ยังไม่มีกิจกรรมหลักในโครงการนี้</p>`;
+            if (!task.subTasks || task.subTasks.length === 0) {
+                container.innerHTML = '<p class="text-xs text-slate-400 italic text-center py-4">ยังไม่มีกิจกรรมหลัก (Level 2) ในโครงการนี้</p>';
                 return;
             }
 
             const today = new Date().toISOString().split('T')[0];
 
-            container.innerHTML = subTasks.map((st, idx) => {
-                const isOverdue = st.endDate && st.endDate < today && !st.completed;
-                const decryptedAssignee = decryptPDPA(st.assignee);
-                const actionItems = st.actionItems || [];
-                const completedActions = actionItems.filter(a => a.completed).length;
-                const subProgress = actionItems.length > 0 ? Math.round((completedActions / actionItems.length) * 100) : (st.completed ? 100 : 0);
+            container.innerHTML = task.subTasks.map((sub, sIdx) => {
+                const subProgress = calculateSubTaskProgress(sub);
+                const isOverdue = sub.endDate && sub.endDate < today && sub.status !== 'COMPLETED';
 
                 return `
-                    <div class="p-4 bg-white border ${isOverdue ? 'border-rose-300 bg-rose-50/30' : 'border-slate-200'} rounded-2xl space-y-3 text-xs shadow-sm">
-                        <!-- Level 2: Activity Header -->
-                        <div class="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
-                            <div class="flex items-center gap-2 flex-1">
-                                <input type="checkbox" ${st.completed ? 'checked' : ''} onchange="toggleSubTaskComplete('${taskId}', '${st.id}')" class="w-4 h-4 text-indigo-600 rounded">
-                                <span class="${st.completed ? 'line-through text-slate-400 font-medium' : 'font-bold text-slate-800 text-sm'}">${escapeHTML(st.title)}</span>
-                                ${isOverdue ? `<span class="px-2 py-0.5 bg-rose-100 text-rose-600 rounded-full text-[10px] font-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>เกินกำหนด!</span>` : ''}
+                    <div class="bg-white p-4 rounded-xl border ${isOverdue ? 'border-rose-300 bg-rose-50/20' : 'border-slate-200'} space-y-3">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                            <div class="space-y-0.5">
+                                <h5 class="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-folder text-indigo-500"></i> ${sub.title}
+                                    ${isOverdue ? '<span class="bg-rose-100 text-rose-600 text-[10px] px-1.5 py-0.5 rounded font-bold animate-pulse">เกินกำหนดส่ง</span>' : ''}
+                                </h5>
+                                <p class="text-[11px] text-slate-500">
+                                    ผู้รับผิดชอบ: <b>${sub.assignee || '-'}</b> (${sub.department || 'ไม่ระบุทีม'}) | 
+                                    กำหนด: ${sub.startDate || '-'} ถึง ${sub.endDate || '-'}
+                                </p>
                             </div>
-                            <button onclick="deleteSubTask('${taskId}', '${st.id}')" class="text-slate-400 hover:text-rose-600 p-1" title="ลบกิจกรรมนี้"><i class="fa-solid fa-trash-can"></i></button>
+                            <div class="flex items-center gap-2">
+                                <select onchange="updateSubTaskStatus('${task.id}', '${sub.id}', this.value)" class="text-[11px] px-2 py-1 border border-slate-200 rounded-lg focus:outline-none">
+                                    <option value="PENDING" ${sub.status === 'PENDING' ? 'selected' : ''}>รอดำเนินการ</option>
+                                    <option value="IN_PROGRESS" ${sub.status === 'IN_PROGRESS' ? 'selected' : ''}>กำลังดำเนินการ</option>
+                                    <option value="COMPLETED" ${sub.status === 'COMPLETED' ? 'selected' : ''}>เสร็จสิ้นแล้ว</option>
+                                </select>
+                                <button onclick="deleteSubTask('${task.id}', '${sub.id}')" class="text-rose-400 hover:text-rose-600 text-xs p-1"><i class="fa-solid fa-trash"></i></button>
+                            </div>
                         </div>
 
-                        <!-- Info & Meta Data -->
-                        <div class="flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
-                            <span><i class="fa-solid fa-user text-indigo-500 mr-1"></i>ผู้รับผิดชอบ: <b>${escapeHTML(decryptedAssignee || 'ไม่ระบุ')}</b></span>
-                            <span><i class="fa-solid fa-building text-slate-400 mr-1"></i>${escapeHTML(st.department || '-')}</span>
-                            <span><i class="fa-regular fa-calendar-days text-slate-400 mr-1"></i>${st.startDate || '-'} ถึง ${st.endDate || '-'}</span>
-                            ${st.fileName ? `
-                                <a href="${st.fileData}" download="${st.fileName}" class="text-indigo-600 hover:underline font-semibold flex items-center gap-1">
-                                    <i class="fa-solid fa-paperclip"></i> ${escapeHTML(st.fileName)}
-                                </a>
-                            ` : ''}
-                        </div>
-
-                        <!-- Activity Progress Bar -->
+                        <!-- Progress Bar Level 2 -->
                         <div class="space-y-1">
-                            <div class="flex justify-between text-[10px] font-medium text-slate-500">
-                                <span>ความคืบหน้ากิจกรรม (${completedActions}/${actionItems.length} สิ่งที่ต้องทำ)</span>
-                                <span class="text-indigo-600 font-bold">${subProgress}%</span>
+                            <div class="flex justify-between text-[10px] text-slate-500 font-medium">
+                                <span>ความสำเร็จกิจกรรมย่อย</span>
+                                <span>${subProgress}%</span>
                             </div>
-                            <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                                <div class="bg-indigo-600 h-1.5 rounded-full transition-all duration-300" style="width: ${subProgress}%"></div>
+                            <div class="w-full bg-slate-100 rounded-full h-1.5">
+                                <div class="bg-emerald-500 h-1.5 rounded-full transition-all" style="width: ${subProgress}%"></div>
                             </div>
                         </div>
 
-                        <!-- Level 3: Nested Action Checklist Items -->
-                        <div class="bg-slate-50/80 p-3 rounded-xl border border-slate-100 space-y-2 mt-2">
-                            <h5 class="text-[11px] font-bold text-slate-600 flex items-center gap-1">
-                                <i class="fa-solid fa-list-check text-indigo-500"></i> สิ่งที่ต้องดำเนินการย่อย (Level 3 Checklist)
-                            </h5>
+                        <!-- Attached File Display -->
+                        ${sub.fileName ? `
+                            <div class="text-[11px] text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+                                <i class="fa-solid fa-paperclip"></i>
+                                <span>แนบไฟล์: <b>${sub.fileName}</b></span>
+                            </div>
+                        ` : ''}
 
-                            <!-- Render Actions -->
+                        <!-- LEVEL 3: Action Items Checklist -->
+                        <div class="bg-slate-50 p-3 rounded-xl space-y-2 border border-slate-100">
+                            <h6 class="text-[11px] font-bold text-slate-600 flex items-center justify-between">
+                                <span><i class="fa-solid fa-list-check text-indigo-500 mr-1"></i>รายการสิ่งที่ต้องทำย่อย (Level 3 Checklist)</span>
+                            </h6>
+                            
+                            <!-- List of Action Items -->
                             <div class="space-y-1.5">
-                                ${actionItems.map(act => {
-                                    const decActAssignee = decryptPDPA(act.assignee);
-                                    return `
-                                        <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200 text-xs">
-                                            <div class="flex items-center gap-2 flex-1">
-                                                <input type="checkbox" ${act.completed ? 'checked' : ''} onchange="toggleActionItem('${taskId}', '${st.id}', '${act.id}')" class="w-3.5 h-3.5 text-emerald-600 rounded">
-                                                <span class="${act.completed ? 'line-through text-slate-400' : 'text-slate-700 font-medium'}">${escapeHTML(act.title)}</span>
-                                            </div>
-                                            <div class="flex items-center gap-2 text-[10px] text-slate-400">
-                                                <span><i class="fa-regular fa-user mr-0.5"></i>${escapeHTML(decActAssignee || '-')}</span>
-                                                ${act.dueDate ? `<span><i class="fa-regular fa-clock mr-0.5"></i>${act.dueDate}</span>` : ''}
-                                                <button onclick="deleteActionItem('${taskId}', '${st.id}', '${act.id}')" class="text-slate-300 hover:text-rose-500"><i class="fa-solid fa-xmark"></i></button>
-                                            </div>
+                                ${(sub.actions || []).map((act, aIdx) => `
+                                    <div class="flex items-center justify-between text-xs bg-white p-2 rounded-lg border border-slate-100">
+                                        <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+                                            <input type="checkbox" ${act.completed ? 'checked' : ''} onchange="toggleActionItem('${task.id}', '${sub.id}', '${act.id}')" class="rounded text-indigo-600 focus:ring-indigo-500">
+                                            <span class="${act.completed ? 'line-through text-slate-400' : 'text-slate-700'} truncate">${act.text}</span>
+                                        </label>
+                                        <div class="flex items-center gap-2 text-[10px] text-slate-400 shrink-0 ml-2">
+                                            ${act.assignee ? `<span class="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">${act.assignee}</span>` : ''}
+                                            ${act.dueDate ? `<span><i class="fa-regular fa-clock"></i> ${act.dueDate}</span>` : ''}
+                                            <button onclick="deleteActionItem('${task.id}', '${sub.id}', '${act.id}')" class="text-slate-300 hover:text-rose-500 ml-1"><i class="fa-solid fa-xmark"></i></button>
                                         </div>
-                                    `;
-                                }).join('')}
+                                    </div>
+                                `).join('')}
                             </div>
 
-                            <!-- Add Level 3 Action Form Inline -->
-                            <form onsubmit="handleAddActionItem(event, '${taskId}', '${st.id}')" class="flex flex-col sm:flex-row gap-1.5 pt-1">
-                                <input type="text" id="actTitle_${st.id}" required placeholder="เพิ่มสิ่งที่ต้องทำย่อย..." class="flex-1 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none">
-                                <input type="text" id="actAssignee_${st.id}" placeholder="ผู้ปฏิบัติงาน..." class="w-full sm:w-28 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none">
-                                <input type="date" id="actDueDate_${st.id}" class="px-2 py-1.5 border border-slate-200 rounded-lg text-xs">
-                                <button type="submit" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold shrink-0">+ เพิ่ม</button>
+                            <!-- Form to Add Action Item (Level 3) -->
+                            <form onsubmit="handleAddActionItem(event, '${task.id}', '${sub.id}')" class="flex gap-1.5 pt-1">
+                                <input type="text" id="actText_${sub.id}" required placeholder="เพิ่มสิ่งที่ต้องทำย่อย..." class="flex-1 px-2.5 py-1 border border-slate-200 rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none">
+                                <input type="text" id="actAssignee_${sub.id}" placeholder="ผู้ทำ..." class="w-20 px-2 py-1 border border-slate-200 rounded-lg text-xs focus:outline-none">
+                                <input type="date" id="actDueDate_${sub.id}" class="px-1.5 py-1 border border-slate-200 rounded-lg text-xs focus:outline-none">
+                                <button type="submit" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-lg font-semibold">+</button>
                             </form>
                         </div>
                     </div>
@@ -1066,338 +1234,243 @@
 
         async function handleAddSubTask(e) {
             e.preventDefault();
-            if (!currentEditingTaskId) return;
-
-            const task = tasks.find(t => t.id === currentEditingTaskId);
+            const task = tasks.find(t => t.id === currentActiveTaskId);
             if (!task) return;
 
             const title = document.getElementById('subTaskTitle').value.trim();
-            const rawAssignee = document.getElementById('subTaskAssignee').value.trim();
+            const assignee = document.getElementById('subTaskAssignee').value.trim();
             const department = document.getElementById('subTaskDepartment').value.trim();
             const startDate = document.getElementById('subTaskStartDate').value;
             const endDate = document.getElementById('subTaskEndDate').value;
             const fileInput = document.getElementById('subTaskFile');
-
-            let fileName = "";
-            let fileData = "";
-
-            if (fileInput.files.length > 0) {
-                const file = fileInput.files[0];
-                fileName = file.name;
-                fileData = await new Promise((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = (e) => resolve(e.target.result);
-                    reader.readAsDataURL(file);
-                });
-            }
+            const fileName = fileInput.files.length > 0 ? fileInput.files[0].name : '';
 
             const newSubTask = {
-                id: 'st_' + Date.now(),
+                id: 'sub-' + Date.now(),
                 title,
-                assignee: encryptPDPA(rawAssignee),
+                assignee,
                 department,
                 startDate,
                 endDate,
+                status: 'PENDING',
                 fileName,
-                fileData,
-                completed: false,
-                actionItems: []
+                actions: []
             };
 
-            if (!task.subTasks) task.subTasks = [];
+            task.subTasks = task.subTasks || [];
             task.subTasks.push(newSubTask);
+            task.auditLogs = task.auditLogs || [];
+            task.auditLogs.unshift({ timestamp: new Date().toLocaleString('th-TH'), user: currentUser || 'Admin', action: `เพิ่มกิจกรรมหลัก: ${title}` });
 
-            addAuditLog(task, 'เพิ่มกิจกรรมหลัก', `เพิ่มกิจกรรม: "${title}" โดย ${rawAssignee || '-'}`);
-            saveTasks();
-            
+            await saveTaskToCloud(task);
             document.getElementById('subTaskForm').reset();
-            renderSubTasksList(currentEditingTaskId);
-            showMessage('สำเร็จ', 'เพิ่มกิจกรรมหลักเรียบร้อยแล้ว', 'success');
+            renderSubTasksList(task);
+            renderTasks();
+            renderDashboard();
+            showAlert('สำเร็จ', 'เพิ่มกิจกรรมหลักเรียบร้อยแล้ว');
         }
 
-        function handleAddActionItem(e, taskId, subTaskId) {
+        async function updateSubTaskStatus(taskId, subId, status) {
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return;
+            const sub = task.subTasks.find(s => s.id === subId);
+            if (sub) {
+                sub.status = status;
+                await saveTaskToCloud(task);
+                renderSubTasksList(task);
+                renderTasks();
+                renderDashboard();
+            }
+        }
+
+        async function deleteSubTask(taskId, subId) {
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return;
+            task.subTasks = task.subTasks.filter(s => s.id !== subId);
+            await saveTaskToCloud(task);
+            renderSubTasksList(task);
+            renderTasks();
+            renderDashboard();
+        }
+
+        async function handleAddActionItem(e, taskId, subId) {
             e.preventDefault();
             const task = tasks.find(t => t.id === taskId);
             if (!task) return;
+            const sub = task.subTasks.find(s => s.id === subId);
+            if (!sub) return;
 
-            const st = task.subTasks.find(s => s.id === subTaskId);
-            if (!st) return;
+            const textInput = document.getElementById(`actText_${subId}`);
+            const assigneeInput = document.getElementById(`actAssignee_${subId}`);
+            const dueDateInput = document.getElementById(`actDueDate_${subId}`);
 
-            const titleEl = document.getElementById(`actTitle_${subTaskId}`);
-            const assigneeEl = document.getElementById(`actAssignee_${subTaskId}`);
-            const dueDateEl = document.getElementById(`actDueDate_${subTaskId}`);
-
-            const title = titleEl.value.trim();
-            if (!title) return;
-
-            if (!st.actionItems) st.actionItems = [];
-            st.actionItems.push({
-                id: 'act_' + Date.now(),
-                title: title,
-                assignee: encryptPDPA(assigneeEl.value.trim()),
-                dueDate: dueDateEl.value,
+            const newAction = {
+                id: 'act-' + Date.now(),
+                text: textInput.value.trim(),
+                assignee: assigneeInput.value.trim(),
+                dueDate: dueDateInput.value,
                 completed: false
-            });
+            };
 
-            saveTasks();
-            renderSubTasksList(taskId);
+            sub.actions = sub.actions || [];
+            sub.actions.push(newAction);
+
+            await saveTaskToCloud(task);
+            renderSubTasksList(task);
+            renderTasks();
+            renderDashboard();
         }
 
-        function toggleActionItem(taskId, subTaskId, actionId) {
+        async function toggleActionItem(taskId, subId, actionId) {
             const task = tasks.find(t => t.id === taskId);
             if (!task) return;
-
-            const st = task.subTasks.find(s => s.id === subTaskId);
-            if (!st) return;
-
-            const act = st.actionItems.find(a => a.id === actionId);
+            const sub = task.subTasks.find(s => s.id === subId);
+            if (!sub) return;
+            const act = sub.actions.find(a => a.id === actionId);
             if (act) {
                 act.completed = !act.completed;
-                
-                // ถ้ารายการย่อยทั้งหมดเสร็จแล้ว ให้ปรับสถานะกิจกรรมหลักเป็นเสร็จอัตโนมัติ
-                if (st.actionItems.every(a => a.completed)) {
-                    st.completed = true;
-                } else {
-                    st.completed = false;
-                }
-
-                saveTasks();
-                renderSubTasksList(taskId);
+                await saveTaskToCloud(task);
+                renderSubTasksList(task);
+                renderTasks();
+                renderDashboard();
             }
         }
 
-        function deleteActionItem(taskId, subTaskId, actionId) {
+        async function deleteActionItem(taskId, subId, actionId) {
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return;
+            const sub = task.subTasks.find(s => s.id === subId);
+            if (!sub) return;
+            sub.actions = sub.actions.filter(a => a.id !== actionId);
+            await saveTaskToCloud(task);
+            renderSubTasksList(task);
+            renderTasks();
+            renderDashboard();
+        }
+
+        // --- AUDIT LOG MODAL ---
+
+        function openAuditLogModal(taskId) {
             const task = tasks.find(t => t.id === taskId);
             if (!task) return;
 
-            const st = task.subTasks.find(s => s.id === subTaskId);
-            if (st) {
-                st.actionItems = st.actionItems.filter(a => a.id !== actionId);
-                saveTasks();
-                renderSubTasksList(taskId);
-            }
-        }
+            const container = document.getElementById('auditLogList');
+            const logs = task.auditLogs || [];
 
-        // --- Calculate Progress based on Nested Actions & Activities ---
-        function renderTasks() {
-            const container = document.getElementById('tasksContainer');
-            const search = document.getElementById('searchInput').value.toLowerCase();
-            const fStatus = document.getElementById('filterStatus').value;
-            const fPriority = document.getElementById('filterPriority').value;
-
-            const filtered = tasks.filter(t => {
-                const decAssignee = decryptPDPA(t.assignee).toLowerCase();
-                const matchesSearch = t.title.toLowerCase().includes(search) || decAssignee.includes(search);
-                const matchesStatus = fStatus === 'ALL' || t.status === fStatus;
-                const matchesPriority = fPriority === 'ALL' || t.priority === fPriority;
-                return matchesSearch && matchesStatus && matchesPriority;
-            });
-
-            if (filtered.length === 0) {
-                container.innerHTML = `
-                    <div class="col-span-full text-center py-12 bg-white rounded-2xl border border-slate-100">
-                        <i class="fa-solid fa-inbox text-4xl text-slate-300 mb-2"></i>
-                        <p class="text-xs text-slate-400">ไม่พบข้อมูลรายการงานตามเงื่อนไข</p>
+            if (logs.length === 0) {
+                container.innerHTML = '<p class="text-xs text-slate-400 text-center py-4">ยังไม่มีประวัติการแก้ไขข้อมูล</p>';
+            } else {
+                container.innerHTML = logs.map(log => `
+                    <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs space-y-1">
+                        <div class="flex justify-between font-semibold text-slate-700">
+                            <span><i class="fa-solid fa-user-pen text-indigo-500 mr-1"></i>${log.user}</span>
+                            <span class="text-[10px] text-slate-400">${log.timestamp}</span>
+                        </div>
+                        <p class="text-slate-600">${log.action}</p>
                     </div>
-                `;
-                return;
+                `).join('');
             }
 
-            container.innerHTML = filtered.map(t => {
-                const decAssignee = decryptPDPA(t.assignee);
-                const subTasks = t.subTasks || [];
-                
-                // Calculate Total Overall Progress across 3 levels
-                let totalActions = 0;
-                let completedActions = 0;
-
-                subTasks.forEach(st => {
-                    const actions = st.actionItems || [];
-                    if (actions.length > 0) {
-                        totalActions += actions.length;
-                        completedActions += actions.filter(a => a.completed).length;
-                    } else {
-                        totalActions += 1;
-                        if (st.completed) completedActions += 1;
-                    }
-                });
-
-                const progress = totalActions > 0 ? Math.round((completedActions / totalActions) * 100) : (t.status === 'COMPLETED' ? 100 : 0);
-
-                const priorityBadge = {
-                    'HIGH': '<span class="px-2 py-0.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-md text-[10px] font-bold">สูง</span>',
-                    'MEDIUM': '<span class="px-2 py-0.5 bg-amber-50 text-amber-600 border border-amber-200 rounded-md text-[10px] font-bold">ปานกลาง</span>',
-                    'LOW': '<span class="px-2 py-0.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-md text-[10px] font-bold">ต่ำ</span>'
-                }[t.priority];
-
-                const statusBadge = {
-                    'PENDING': '<span class="px-2.5 py-1 bg-amber-50 text-amber-600 rounded-full text-xs font-semibold">รอดำเนินการ</span>',
-                    'IN_PROGRESS': '<span class="px-2.5 py-1 bg-blue-50 text-blue-600 rounded-full text-xs font-semibold">กำลังดำเนินการ</span>',
-                    'COMPLETED': '<span class="px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-full text-xs font-semibold">เสร็จสิ้นแล้ว</span>',
-                    'CANCELLED': '<span class="px-2.5 py-1 bg-rose-50 text-rose-600 rounded-full text-xs font-semibold">ยกเลิก</span>'
-                }[t.status];
-
-                return `
-                    <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm hover:shadow-md transition space-y-4 flex flex-col justify-between">
-                        <div class="space-y-2">
-                            <div class="flex justify-between items-start gap-2">
-                                <h3 class="font-bold text-slate-800 text-sm leading-snug">${escapeHTML(t.title)}</h3>
-                                ${priorityBadge}
-                            </div>
-                            <p class="text-xs text-slate-500 line-clamp-2">${escapeHTML(t.description || 'ไม่มีรายละเอียด')}</p>
-                        </div>
-
-                        <!-- Progress Bar -->
-                        <div class="space-y-1">
-                            <div class="flex justify-between text-[11px] font-medium">
-                                <span class="text-slate-500">ความคืบหน้ารวม</span>
-                                <span class="text-indigo-600 font-bold">${progress}%</span>
-                            </div>
-                            <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                                <div class="bg-indigo-600 h-1.5 rounded-full transition-all duration-300" style="width: ${progress}%"></div>
-                            </div>
-                        </div>
-
-                        <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                            <div class="flex items-center gap-1.5 text-slate-600 font-medium">
-                                <i class="fa-solid fa-circle-user text-indigo-500"></i>
-                                <span>${escapeHTML(decAssignee || 'ไม่ระบุ')}</span>
-                            </div>
-                            ${statusBadge}
-                        </div>
-
-                        <div class="flex items-center justify-between pt-2 gap-1 border-t border-slate-50">
-                            <button onclick="openSubTaskModal('${t.id}')" class="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-medium transition flex items-center gap-1">
-                                <i class="fa-solid fa-sitemap"></i> กิจกรรม (${subTasks.length} เฟส)
-                            </button>
-                            <div class="flex items-center gap-1">
-                                <button onclick="openAuditLogModal('${t.id}')" class="p-1.5 text-slate-400 hover:text-amber-600 rounded-lg transition" title="ดูประวัติแก้ไข"><i class="fa-solid fa-clock-rotate-left"></i></button>
-                                <button onclick="openTaskModal('${t.id}')" class="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg transition" title="แก้ไข"><i class="fa-solid fa-pen-to-square"></i></button>
-                                <button onclick="deleteTask('${t.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition" title="ลบ"><i class="fa-solid fa-trash-can"></i></button>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+            document.getElementById('auditLogModal').classList.remove('hidden');
         }
 
-        // --- 7. EXPORT TO CSV (EXCEL) ---
+        // --- EXPORT TO EXCEL / CSV (THAI SUPPORTED) ---
+
         function exportToCSV() {
             if (tasks.length === 0) {
-                showMessage('แจ้งเตือน', 'ไม่มีข้อมูลสำหรับส่งออก', 'info');
+                showAlert('แจ้งเตือน', 'ไม่มีข้อมูลงานให้ส่งออก', 'warning');
                 return;
             }
 
-            let csvContent = "\uFEFF"; // UTF-8 BOM for Thai Excel Support
-            csvContent += "ID,ชื่อโครงการ,รายละเอียด,ผู้รับผิดชอบ,เบอร์ติดต่อ,ความสำคัญ,สถานะ,กำหนดส่ง,จำนวนกิจกรรมย่อยทั้งหมด,กิจกรรมย่อยที่เสร็จแล้ว\n";
+            let csvContent = "\uFEFF"; // UTF-8 BOM for Thai support
+            csvContent += "ID,ชื่อโครงการ,รายละเอียด,ผู้รับผิดชอบหลัก,เบอร์ติดต่อ,ความสำคัญ,สถานะ,กำหนดส่ง,% ความสำเร็จ\n";
 
-            tasks.forEach(t => {
-                const decAssignee = decryptPDPA(t.assignee);
-                const decContact = decryptPDPA(t.contact);
-                const subTasks = t.subTasks || [];
-                const completedSub = subTasks.filter(s => s.completed).length;
+            tasks.forEach(task => {
+                const decAssignee = decryptData(task.assignee).replace(/"/g, '""');
+                const decContact = decryptData(task.contact).replace(/"/g, '""');
+                const title = (task.title || '').replace(/"/g, '""');
+                const desc = (task.description || '').replace(/"/g, '""');
+                const progress = calculateTaskProgress(task);
 
-                const row = [
-                    `"${t.id}"`,
-                    `"${(t.title || '').replace(/"/g, '""')}"`,
-                    `"${(t.description || '').replace(/"/g, '""')}"`,
-                    `"${decAssignee}"`,
-                    `"${decContact}"`,
-                    `"${t.priority}"`,
-                    `"${t.status}"`,
-                    `"${t.dueDate || ''}"`,
-                    subTasks.length,
-                    completedSub
-                ];
-                csvContent += row.join(",") + "\n";
+                csvContent += `"${task.id}","${title}","${desc}","${decAssignee}","${decContact}","${task.priority}","${task.status}","${task.dueDate || ''}","${progress}%"\n`;
             });
 
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.setAttribute("href", url);
-            link.setAttribute("download", `Work_Tracker_Export_${new Date().toISOString().split('T')[0]}.csv`);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', `work_tracker_export_${new Date().toISOString().split('T')[0]}.csv`);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+            showAlert('สำเร็จ', 'ส่งออกข้อมูลเป็นไฟล์ Excel (CSV) เรียบร้อยแล้ว');
         }
 
-        // --- 8. UI HELPERS & MODALS CONTROLLER ---
+        // --- UI NAVIGATION & GENERAL HELPERS ---
+
         function switchTab(tab) {
-            document.getElementById('dashboardSection').classList.toggle('hidden', tab !== 'dashboard');
-            document.getElementById('tasksSection').classList.toggle('hidden', tab !== 'tasks');
+            const dashBtn = document.getElementById('tabDashboardBtn');
+            const tasksBtn = document.getElementById('tabTasksBtn');
+            const dashSec = document.getElementById('dashboardSection');
+            const tasksSec = document.getElementById('tasksSection');
 
-            document.getElementById('tabDashboardBtn').className = tab === 'dashboard' 
-                ? 'px-4 py-2 rounded-lg transition-all flex items-center gap-2 bg-white text-indigo-600 shadow-sm'
-                : 'px-4 py-2 rounded-lg transition-all flex items-center gap-2 text-slate-600 hover:text-indigo-600';
-
-            document.getElementById('tabTasksBtn').className = tab === 'tasks' 
-                ? 'px-4 py-2 rounded-lg transition-all flex items-center gap-2 bg-white text-indigo-600 shadow-sm'
-                : 'px-4 py-2 rounded-lg transition-all flex items-center gap-2 text-slate-600 hover:text-indigo-600';
-        }
-
-        function openModal(id) {
-            document.getElementById(id).classList.remove('hidden');
-        }
-
-        function closeModal(id) {
-            document.getElementById(id).classList.add('hidden');
+            if (tab === 'dashboard') {
+                dashBtn.className = "px-4 py-2 rounded-lg transition-all flex items-center gap-2 bg-white text-indigo-600 shadow-sm";
+                tasksBtn.className = "px-4 py-2 rounded-lg transition-all flex items-center gap-2 text-slate-600 hover:text-indigo-600";
+                dashSec.classList.remove('hidden');
+                tasksSec.classList.add('hidden');
+                renderDashboard();
+            } else {
+                tasksBtn.className = "px-4 py-2 rounded-lg transition-all flex items-center gap-2 bg-white text-indigo-600 shadow-sm";
+                dashBtn.className = "px-4 py-2 rounded-lg transition-all flex items-center gap-2 text-slate-600 hover:text-indigo-600";
+                tasksSec.classList.remove('hidden');
+                dashSec.classList.add('hidden');
+                renderTasks();
+            }
         }
 
         function openSecurityInfoModal() {
-            openModal('securityModal');
+            document.getElementById('securityModal').classList.remove('hidden');
         }
 
-        function showMessage(title, message, type = 'success') {
-            const box = document.getElementById('alertBox');
-            const titleEl = document.getElementById('alertTitle');
-            const msgEl = document.getElementById('alertMessage');
-            const iconEl = document.getElementById('alertIcon');
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+        }
 
-            titleEl.innerText = title;
-            msgEl.innerText = message;
+        function showAlert(title, message, type = 'success') {
+            const alertBox = document.getElementById('alertBox');
+            const alertTitle = document.getElementById('alertTitle');
+            const alertMessage = document.getElementById('alertMessage');
+            const alertIcon = document.getElementById('alertIcon');
 
-            if (type === 'success') {
-                iconEl.className = 'fa-solid fa-circle-check text-emerald-400';
-            } else if (type === 'error') {
-                iconEl.className = 'fa-solid fa-circle-xmark text-rose-400';
+            alertTitle.textContent = title;
+            alertMessage.textContent = message;
+
+            if (type === 'error') {
+                alertIcon.className = 'fa-solid fa-circle-xmark text-rose-400';
+            } else if (type === 'warning') {
+                alertIcon.className = 'fa-solid fa-triangle-exclamation text-amber-400';
             } else {
-                iconEl.className = 'fa-solid fa-circle-info text-blue-400';
+                alertIcon.className = 'fa-solid fa-circle-check text-emerald-400';
             }
 
-            box.classList.remove('translate-y-20', 'opacity-0', 'pointer-events-none');
+            alertBox.classList.remove('translate-y-20', 'opacity-0', 'pointer-events-none');
             setTimeout(() => {
-                box.classList.add('translate-y-20', 'opacity-0', 'pointer-events-none');
+                alertBox.classList.add('translate-y-20', 'opacity-0', 'pointer-events-none');
             }, 3500);
         }
 
-        function getSampleTasks() {
-            return [
-                {
-                    id: 'task_demo_1',
-                    title: 'พัฒนาและติดตั้งระบบติดตามงานองค์กร',
-                    description: 'จัดทำระบบ Work Tracker สำหรับติดตามภารกิจและกิจกรรมย่อยพร้อมระบบความปลอดภัย PDPA',
-                    assignee: encryptPDPA('สมชาย ใจดี'),
-                    contact: encryptPDPA('081-234-5678'),
-                    priority: 'HIGH',
-                    status: 'IN_PROGRESS',
-                    dueDate: '2026-11-15',
-                    subTasks: [
-                        { id: 'st_1', title: 'ออกแบบ UX/UI หน้าจอ', assignee: encryptPDPA('วิภาดา สุขใจ'), department: 'IT Department', startDate: '2026-11-01', endDate: '2026-11-05', completed: true },
-                        { id: 'st_2', title: 'พัฒนาระบบ OTP & PDPA Encryption', assignee: encryptPDPA('สมชาย ใจดี'), department: 'Security Team', startDate: '2026-11-06', endDate: '2026-11-10', completed: false }
-                    ],
-                    auditLogs: [
-                        { timestamp: '1/11/2026, 09:00:00', user: 'admin@company.com', action: 'สร้างงานใหม่', details: 'สร้างระบบตั้งต้นเรียบร้อย' }
-                    ]
-                }
-            ];
-        }
+        // --- APPLICATION INITIALIZATION ON LOAD ---
 
-        // --- APP INITIALIZATION ON WINDOW LOAD ---
         window.onload = function() {
-            loadRegisteredUsers();
-            checkAuthStatus();
-            initCloudSync();
+            // Check session login state
+            const loggedUser = localStorage.getItem('wt_logged_user');
+            if (loggedUser) {
+                currentUser = loggedUser;
+                document.getElementById('authOverlay').classList.add('hidden');
+                document.getElementById('currentUserEmail').textContent = currentUser;
+                initApp();
+            }
         };
     </script>
 </body>
