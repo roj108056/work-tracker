@@ -468,7 +468,7 @@
         // Firebase Cloud SDK Integration
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, getDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Read Firebase Configuration from external config.js
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'work-tracker-app';
@@ -488,7 +488,7 @@
             console.log("Cloud Database offline mode initialized.");
         }
 
-        window.FirebaseSDK = { db, auth, collection, doc, setDoc, deleteDoc, onSnapshot, appId };
+        window.FirebaseSDK = { db, auth, collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, appId };
     </script>
 
     <script>
@@ -531,7 +531,7 @@
 
         // --- 2. AUTH & USER MANAGEMENT SYSTEM ---
         async function loadRegisteredUsers() {
-            const defaultAdmin = (window.DEFAULT_ADMIN_EMAIL || 'admin@company.com').toLowerCase();
+            const defaultAdmin = (window.DEFAULT_ADMIN_EMAIL || 'admin@company.com').toLowerCase().trim();
             
             // 1. อ่านค่าเดิมจาก LocalStorage
             const data = localStorage.getItem(REGISTERED_USERS_KEY);
@@ -543,14 +543,14 @@
 
             // 2. ดึงข้อมูลจาก Cloud Firestore เพิ่มเติม (ถ้ามี)
             const SDK = window.FirebaseSDK;
-            if (SDK && SDK.db) {
+            if (SDK && SDK.db && SDK.getDoc) {
                 try {
                     const userSettingRef = SDK.doc(SDK.db, 'artifacts', SDK.appId, 'public', 'data', 'settings', 'allowed_users');
-                    const snapshot = await SDK.getDoc?.(userSettingRef);
+                    const snapshot = await SDK.getDoc(userSettingRef);
                     if (snapshot && snapshot.exists() && snapshot.data().list) {
                         const cloudList = snapshot.data().list;
                         cloudList.forEach(u => {
-                            if (!registeredUsers.includes(u.toLowerCase())) {
+                            if (u && !registeredUsers.includes(u.toLowerCase())) {
                                 registeredUsers.push(u.toLowerCase());
                             }
                         });
@@ -652,9 +652,9 @@
             // โหลดสิทธิ์ล่าสุดจากทั้ง LocalStorage, Config และ Cloud
             await loadRegisteredUsers();
             
-            const defaultAdmin = (window.DEFAULT_ADMIN_EMAIL || 'admin@company.com').toLowerCase();
+            const defaultAdmin = (window.DEFAULT_ADMIN_EMAIL || 'admin@company.com').toLowerCase().trim();
 
-            // Strict Check: ตรวจสอบสิทธิ์โดยตรง
+            // Strict Check: ตรวจสอบสิทธิ์โดยตรง (รวมทั้งค่าตรงจาก config.js และรายการ whitelist)
             const isAllowed = registeredUsers.includes(email) || email === defaultAdmin;
 
             if (!isAllowed) {
