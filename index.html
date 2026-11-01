@@ -531,26 +531,20 @@
 
         // --- 2. AUTH & USER MANAGEMENT SYSTEM ---
         async function loadRegisteredUsers() {
+            const defaultAdmin = (window.DEFAULT_ADMIN_EMAIL || 'admin@company.com').toLowerCase();
+            
+            // อ่านค่าเดิมจาก LocalStorage
             const data = localStorage.getItem(REGISTERED_USERS_KEY);
             if (data) {
                 try { registeredUsers = JSON.parse(data); } catch(e) { registeredUsers = []; }
             } else {
-                const defaultEmail = window.DEFAULT_ADMIN_EMAIL || 'admin@company.com';
-                registeredUsers = [defaultEmail];
-                saveRegisteredUsers();
+                registeredUsers = [];
             }
 
-            // Sync Latest Allowed Users from Firebase Cloud if available
-            const SDK = window.FirebaseSDK;
-            if (SDK && SDK.db) {
-                try {
-                    const docRef = SDK.doc(SDK.db, 'artifacts', SDK.appId, 'public', 'data', 'settings', 'allowed_users');
-                    const snapshot = await SDK.getDoc(docRef);
-                    if (snapshot.exists() && snapshot.data().list) {
-                        registeredUsers = snapshot.data().list;
-                        localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
-                    }
-                } catch(e){}
+            // บังคับการันตีให้ DEFAULT_ADMIN_EMAIL มีสิทธิ์เสมอ
+            if (!registeredUsers.includes(defaultAdmin)) {
+                registeredUsers.push(defaultAdmin);
+                localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
             }
         }
 
@@ -562,7 +556,7 @@
             if (SDK && SDK.db) {
                 try {
                     const docRef = SDK.doc(SDK.db, 'artifacts', SDK.appId, 'public', 'data', 'settings', 'allowed_users');
-                    SDK.setDoc(docRef, { list: registeredUsers });
+                    SDK.setDoc(docRef, { list: registeredUsers }, { merge: true });
                 } catch(e){}
             }
         }
@@ -637,11 +631,15 @@
             const email = document.getElementById('authEmail').value.trim().toLowerCase();
             if (!email) return;
 
-            // Fetch fresh Whitelist Users from Cloud Database before verifying
+            // อ่านค่าสิทธิ์ล่าสุด
             await loadRegisteredUsers();
+            
+            const defaultAdmin = (window.DEFAULT_ADMIN_EMAIL || 'admin@company.com').toLowerCase();
 
-            // Strict Check: เฉพาะอีเมลที่มีรายชื่อใน White-list เท่านั้นที่จะขอรับ OTP ได้
-            if (!registeredUsers.includes(email)) {
+            // Strict Check: ตรวจสอบว่าเป็น Admin Email หรือเป็น Whitelist Email หรือไม่
+            const isAllowed = registeredUsers.includes(email) || email === defaultAdmin;
+
+            if (!isAllowed) {
                 showMessage('ปฏิเสธการเข้าถึง (Access Denied)', `อีเมล ${email} ไม่ได้รับอนุญาตให้เข้าใช้งานระบบ กรุณาติดต่อผู้ดูแลระบบ (Admin) เพื่อเพิ่มสิทธิ์เข้าใช้งาน`, 'error');
                 return;
             }
